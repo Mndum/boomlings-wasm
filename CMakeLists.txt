@@ -15,7 +15,7 @@ target_include_directories(cocos2d PUBLIC
   ${CC}/platform/third_party/linux/libfreetype2 third_party/extensions third_party/external/chipmunk/include/chipmunk)
 target_compile_options(cocos2d PRIVATE -w -Wno-c++11-narrowing -sUSE_SDL=2 -sUSE_ZLIB=1 -sUSE_LIBPNG=1 -sUSE_LIBJPEG=1 -sUSE_FREETYPE=1)
 
-add_executable(boomlings src/main.cpp src/game/AnimLibrary.cpp src/game/CCAnimatedSprite.cpp src/game/GamePiece.cpp src/game/AStarGrid.cpp src/game/GamePieceManager.cpp)
+add_executable(boomlings src/main.cpp src/game/AnimLibrary.cpp src/game/CCAnimatedSprite.cpp src/game/GamePiece.cpp src/game/AStarGrid.cpp src/game/GamePieceManager.cpp src/game/GameTurnManager.cpp)
 target_include_directories(boomlings PRIVATE src/game)
 target_link_libraries(boomlings cocos2d)
 set(ASSETS "" CACHE PATH "folder with the APK's assets (not part of the repo)")

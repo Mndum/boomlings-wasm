@@ -5,6 +5,7 @@ USING_NS_CC;
 #include "GamePiece.h"
 #include "AStarGrid.h"
 #include "GamePieceManager.h"
+#include "GameTurnManager.h"
 // Milestone 2 test board: 8x8 AStarGrid filled by GamePieceManager. Tap a piece to select it, tap an empty cell to walk it there
 // along AStarGrid::findPath; the connected same-colour group of the landing cell bumps.
 class TestLayer : public CCLayerColor {
@@ -13,6 +14,10 @@ public:
     CREATE_FUNC(TestLayer);
     AStarGrid* grid = NULL;
     GamePieceManager mgr;
+    GameTurnManager* turn = NULL;
+    CCLabelTTF* scoreLbl = NULL;
+    int score = 0, moves = 0;
+    bool spawnPending = false;
     AStarNode* selected = NULL;
     bool busy = false;
     static const int N = 8;
@@ -33,10 +38,31 @@ public:
             n->piece->setPosition(posOf(n)); n->piece->setScale(0.75f);
             addChild(n->piece);
         }
+        turn = new GameTurnManager(grid);
+        turn->level = [] { return 8; };
+        turn->onPoints = [this](int p, AStarNode*) { score += p; char b[32]; sprintf(b, "Score %d", score); scoreLbl->setString(b); };
+        scoreLbl = CCLabelTTF::create("Score 0", "Arial", 18);
+        scoreLbl->setPosition(ccp(160, 450)); addChild(scoreLbl);
+        scheduleUpdate();
         setTouchEnabled(true);
         return true;
     }
-    ~TestLayer() { delete grid; }
+    ~TestLayer() { delete turn; delete grid; }
+    void update(float dt) {
+        turn->tick(dt);
+        if (spawnPending && !busy && !turn->busy()) { spawnPending = false; spawn(3); }
+    }
+    void spawn(int n) {
+        for (int i = 0; i < n * 4 && n > 0; i++) {
+            AStarNode* c = grid->nodeAt(rand() % N, rand() % N);
+            if (c->piece) continue;
+            mgr.incrementChances();
+            c->piece = mgr.createRandomPiece();
+            c->piece->setPosition(posOf(c)); c->piece->setScale(0.75f);
+            addChild(c->piece);
+            n--;
+        }
+    }
     void ccTouchesBegan(CCSet* t, CCEvent*) {
         if (busy) return;
         CCTouch* tc = (CCTouch*)*t->begin();
@@ -58,8 +84,8 @@ public:
     AStarNode* landing = NULL;
     void landed(CCNode*) {
         busy = false;
-        for (AStarNode* g : grid->sameTypeConnected(landing))
-            g->piece->runAction(CCSequence::create(CCScaleTo::create(0.1f, 1.0f), CCScaleTo::create(0.1f, 0.75f), NULL));
+        turn->pieceLanded(landing);
+        spawnPending = true;
     }
 };
 
