@@ -18,7 +18,7 @@ public:
 private:
     enum Phase { kIdle, kMoving, kResolving, kLevelOver, kDead };
     static const int N = 8;
-    float cell = 40, ox = 0, oy = 108;
+    float cell = 40, ox = 0, oy = 107.4f;
     AStarGrid* grid = NULL;
     GamePieceManager mgr;
     GameTurnManager* turn = NULL;

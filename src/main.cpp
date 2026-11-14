@@ -21,5 +21,5 @@ public:
 
 int main(int, char**) {
     // the canvas backing size decides the GL viewport: 2:3 like the game's 320x480 design
-    EM_ASM({ var c = Module["canvas"]; c.width = 480; c.height = 720; });
+    EM_ASM({ var c = Module["canvas"]; c.width = 640; c.height = 960; });
     static AppDelegate app; CCEGLView::sharedOpenGLView(); return CCApplication::sharedApplication()->run(); }

@@ -1,5 +1,6 @@
 #include "PlayLayer.h"
 #include <deque>
+#include <emscripten.h>
 USING_NS_CC;
 
 static const int kSpecialIntro[][2] = { {3, kAttrIceBomb}, {5, kAttrPipe}, {7, kAttrSkull}, {9, kAttrMysteryBox}, {11, kAttrStone}, {13, kAttrChanger} };
@@ -57,9 +58,11 @@ PlayLayer::~PlayLayer() { delete turn; delete grid; }
 void PlayLayer::layoutHud() {
     CCSprite* bottom = CCSprite::createWithSpriteFrameName("bottomBG_001.png");
     bottom->setAnchorPoint(ccp(0.5f, 0)); bottom->setPosition(ccp(160, 0));
+    // PlayLayer stretches the panel to start 3.56px above the board's bottom edge
+    bottom->setScaleY((960 - 742.64f) / 2 / bottom->getContentSize().height);
     addChild(bottom, 5);
     CCSprite* top = CCSprite::createWithSpriteFrameName("topBar_001.png");
-    top->setAnchorPoint(ccp(0.5f, 1)); top->setPosition(ccp(160, 480));
+    top->setAnchorPoint(ccp(0.5f, 1)); top->setPosition(ccp(160, 479.75f));
     addChild(top, 5);
     CCSprite* barBG = CCSprite::createWithSpriteFrameName("pointsbar_BG_001.png");
     barBG->setPosition(ccp(160, 91)); addChild(barBG, 6);
@@ -70,9 +73,9 @@ void PlayLayer::layoutHud() {
     barFill->setPosition(ccp(160 - barTop->getContentSize().width / 2 + 8, 91));
     addChild(barFill, 7);
     CCSprite* pause = CCSprite::createWithSpriteFrameName("PauseBtn_001.png");
-    pause->setPosition(ccp(24, 456)); addChild(pause, 9);
+    pause->setPosition(ccp(24, 455.5f)); addChild(pause, 9);
     scoreLbl = CCLabelBMFont::create("0", "numbersFont-hd.fnt");
-    scoreLbl->setAnchorPoint(ccp(1, 1)); scoreLbl->setPosition(ccp(270, 463)); addChild(scoreLbl, 9);
+    scoreLbl->setAnchorPoint(ccp(1, 1)); scoreLbl->setPosition(ccp(273.2f, 462.5f)); addChild(scoreLbl, 9);
     levelLbl = CCLabelBMFont::create("1", "goldFont-hd.fnt");
     levelLbl->setScale(0.8f); levelLbl->setPosition(ccp(66.7f, 451.3f)); addChild(levelLbl, 9);
     bigLbl = CCLabelBMFont::create("", "bigFont-hd.fnt");
@@ -132,6 +135,7 @@ void PlayLayer::startLevel() {
         for (int x = 0; x < N; x++) for (int y = 0; y < N; y++) if (!grid->nodeAt(x, y)->piece) free.push_back(grid->nodeAt(x, y));
         if (!free.empty()) { AStarNode* n = free[rand() % free.size()]; GamePiece* p = GamePiece::create(GamePieceManager::randomPieceColor(level), (PieceAttribute)s[1]); n->piece = p; p->setPosition(posOf(n)); boardLayer->addChild(p); }
     }
+    if (!emscripten_run_script_int("location.search.indexOf('empty')>=0"))
     spawnRandom(level == 1 ? 10 : std::min(20, 15 + level / 4));
     phase = kIdle;
     updateHud();
