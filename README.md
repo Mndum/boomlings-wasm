@@ -8,7 +8,8 @@ vendors cocos2d-x 2.1.5 (MIT) because it ships an Emscripten platform backend; 2
 ## Status
 - [x] Milestone 1: cocos2d-x 2.1.5 core builds with a current Emscripten and runs in the browser
   (`src/main.cpp` shows a bitmap-font label and a sprite from the game's sprite sheet, with an action).
-- [ ] Milestone 2: port the game classes (`GamePiece`, `GamePieceChanger`, managers, `PlayLayer`, ...) to C++
+- [~] Milestone 2 (in progress): animation stack (`AnimLibrary`, `CCAnimatedSprite`) and `GamePiece` (types, colours, `changePiece`, strong colour) are ported; `src/main.cpp` shows every attribute x colour animating from the game's own `objectDefinitions.plist`, with Changers cycling colour and staying Changers. Next: `GamePieceManager`, `AStarGrid`, `PlayLayer`.
+- [ ] Milestone 2 plan: port the game classes (`GamePiece`, `GamePieceChanger`, managers, `PlayLayer`, ...) to C++
   from the decompiled code, one class at a time, checked against the JS port.
 - [ ] Milestone 3: menus, shop, audio, save data.
 
