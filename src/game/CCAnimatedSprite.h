@@ -15,7 +15,10 @@ public:
     bool runAnimation(const std::string& name, bool loop = false, std::function<void()> onEnd = nullptr);
     const std::string& activeAnimation() const { return m_name; }
     const std::string& type() const { return m_type; }
+    int frameIndex() const { return m_idx; }
     virtual void update(float dt);
+    // opacity applied to every part sprite (the node itself has no opacity)
+    void setPartOpacity(GLubyte o);
     // GamePiece overrides this like CCAnimatedSprite::animationFinished
     virtual void animationFinished(const std::string& name) { (void)name; }
 protected:
@@ -27,5 +30,6 @@ protected:
     std::function<void()> m_onEnd;
     std::vector<cocos2d::CCSprite*> m_parts;
     cocos2d::CCNode* m_holder = NULL;
+    GLubyte m_partOpacity = 255;
     void showFrame();
 };

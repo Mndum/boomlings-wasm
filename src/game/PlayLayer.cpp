@@ -2,6 +2,7 @@
 #include <deque>
 #include <emscripten.h>
 USING_NS_CC;
+GamePiece* g_dbgPiece = NULL;
 
 // scissors its children to the region below the board: PlayLayer clips the bottom panel 10px under the board's edge
 class PanelClip : public CCNode {
@@ -16,6 +17,27 @@ public:
 };
 
 static const int kSpecialIntro[][2] = { {3, kAttrIceBomb}, {5, kAttrPipe}, {7, kAttrSkull}, {9, kAttrMysteryBox}, {11, kAttrStone}, {13, kAttrChanger} };
+
+// radial glow of the bomb flash: white (alpha a) in the centre fading to transparent orange at the rim
+class GlowNode : public CCNode {
+public:
+    float radius = 1, alpha = 1;
+    bool init() { if (!CCNode::init()) return false; setShaderProgram(CCShaderCache::sharedShaderCache()->programForKey(kCCShader_PositionColor)); return true; }
+    CREATE_FUNC(GlowNode);
+    virtual void draw() {
+        CC_NODE_DRAW_SETUP();
+        ccGLBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        ccGLEnableVertexAttribs(kCCVertexAttribFlag_Position | kCCVertexAttribFlag_Color);
+        const int N = 32;
+        ccVertex2F v[N + 2]; ccColor4F c[N + 2];
+        v[0].x = 0; v[0].y = 0; c[0] = ccc4f(1, 1, 1, 0.8f * alpha);
+        for (int i = 0; i <= N; i++) { float a = i * 2 * 3.14159265f / N; v[i + 1].x = cosf(a) * radius; v[i + 1].y = sinf(a) * radius; c[i + 1] = ccc4f(1, 200 / 255.f, 80 / 255.f, 0); }
+        glBindBuffer(GL_ARRAY_BUFFER, 0); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        glVertexAttribPointer(kCCVertexAttrib_Position, 2, GL_FLOAT, GL_FALSE, 0, v);
+        glVertexAttribPointer(kCCVertexAttrib_Color, 4, GL_FLOAT, GL_FALSE, 0, c);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, N + 2);
+    }
+};
 
 CCScene* PlayLayer::scene() { CCScene* s = CCScene::create(); s->addChild(PlayLayer::create()); return s; }
 
@@ -50,13 +72,15 @@ bool PlayLayer::init() {
     hintLayer = CCNode::create(); addChild(hintLayer, -4);
     CCNode* shadows = CCNode::create(); addChild(shadows, -3); GamePiece::shadowLayer = shadows;
     boardLayer = CCLayer::create(); addChild(boardLayer, 0);
+    fxLayer = CCNode::create(); addChild(fxLayer, 3);
     layoutHud();
 
     mgr.level = [this] { return level; };
     mgr.countOf = [this](int a) { return countOf(a); };
     turn = new GameTurnManager(grid);
     turn->level = [this] { return level; };
-    turn->onPoints = [this](int p, AStarNode*) { score += p; levelPoints += p; updateHud(); };
+    turn->onPoints = [this](int p, AStarNode* at, int color) { score += p; levelPoints += p; updateHud(); addScore(p, at, color); };
+    turn->onEffect = [this](const char* k, AStarNode* at, int color, int radius, AStarNode* to) { addEffect(k, at, color, radius, to); };
     turn->spawnAt = [this](AStarNode* n) { return spawnAt(n, true); };
 
     scheduleUpdate();
@@ -118,6 +142,7 @@ void PlayLayer::updateHud() {
 }
 
 void PlayLayer::showBig(const char* text, float dur) {
+    if (emscripten_run_script_int("location.search.indexOf('manual')>=0")) return;
     bigLbl->setString(text); bigLbl->setVisible(true); bigLbl->setOpacity(255);
     bigLbl->stopAllActions();
     bigLbl->runAction(CCSequence::create(CCDelayTime::create(dur * 0.6f), CCFadeOut::create(dur * 0.4f), NULL));
@@ -129,7 +154,7 @@ GamePiece* PlayLayer::spawnAt(AStarNode* n, bool animate) {
     n->piece = p;
     p->setPosition(posOf(n));
     boardLayer->addChild(p);
-    if (animate) { p->setScale(0.1f); p->runAction(CCEaseBackOut::create(CCScaleTo::create(0.25f, 1))); }
+    if (animate) p->startEnter();
     return p;
 }
 
@@ -166,6 +191,16 @@ void PlayLayer::startLevel() {
             n = grid->nodeAt(c - 1, 0); g = GamePiece::create((PieceColor)c, kAttrChanger); n->piece = g; g->setPosition(posOf(n)); boardLayer->addChild(g);
         }
         for (int x = 6; x < 8; x++) { AStarNode* n = grid->nodeAt(x, 1); GamePiece* g = GamePiece::create(kColorGreen, kAttrStone); n->piece = g; g->setPosition(posOf(n)); boardLayer->addChild(g); }
+        g_dbgPiece = grid->nodeAt(0, 7)->piece;
+        char* clip = emscripten_run_script_string("(location.search.match(/clip=([A-Za-z0-9]+)/)||[0,''])[1]");
+        if (clip && *clip) for (int x = 0; x < N; x++) for (int y = 0; y < N; y++) { AStarNode* n = grid->nodeAt(x, y); if (n->piece) n->piece->runAnimation(clip, false); }
+    } else if (emscripten_run_script_int("location.search.indexOf('fx')>=0")) {
+        // effect comparison fixture (JS rows y -> gy = 7 - y)
+        auto N_ = [this](int x, int jy) { return grid->nodeAt(x, 7 - jy); };
+        addEffect("cloud", N_(0, 1), 0, 1, NULL); addEffect("splash", N_(2, 1), kColorGreen, 1, NULL);
+        addEffect("flash", N_(4, 1), kColorRed, 1, NULL); addEffect("iceblast", N_(6, 1), 0, 1, NULL);
+        addEffect("ball", N_(0, 4), kColorBlue, 1, N_(3, 4)); addEffect("flash", N_(6, 4), kColorYellow, 2, NULL);
+        level = 1; addScore(20, N_(1, 6), kColorOrange); addScore(250, N_(5, 6), kColorBlue);
     } else
     if (!emscripten_run_script_int("location.search.indexOf('empty')>=0"))
     spawnRandom(level == 1 ? 10 : std::min(20, 15 + level / 4));
@@ -209,7 +244,7 @@ void PlayLayer::movePiece(AStarNode* from, AStarNode* to) {
     GamePiece* pc = from->piece;
     setSelected(NULL);
     CCArray* acts = CCArray::create();
-    for (size_t i = 1; i < path.size(); i++) acts->addObject(CCMoveTo::create(0.04f, posOf(path[i])));
+    for (size_t i = 1; i < path.size(); i++) acts->addObject(CCMoveTo::create(0.08f, posOf(path[i])));
     acts->addObject(CCCallFuncN::create(this, callfuncN_selector(PlayLayer::landed)));
     from->piece = NULL; to->piece = pc; landing = to; phase = kMoving;
     pc->runAction(CCSequence::create(acts));
@@ -242,6 +277,85 @@ void PlayLayer::endTurn() {
 
 void PlayLayer::update(float dt) {
     turn->tick(dt);
+    updateEffects(dt);
     if (phase == kResolving && !turn->busy()) endTurn();
     else if (phase == kLevelOver) { levelTimer -= dt; if (levelTimer <= 0) startLevel(); }
+}
+
+static const char* kScoreColors[7] = { "", "69ff69", "ff6464", "ffa63c", "64a5ff", "ff78ff", "fff03c" };
+
+void PlayLayer::addEffect(const char* kind, AStarNode* at, int color, int radius, AStarNode* to) {
+    Fx e; e.kind = kind; e.t = 0; e.radius = radius; e.n = 1; e.node = NULL;
+    e.a = posOf(at); e.b = to ? posOf(to) : e.a;
+    std::string tag = GamePiece::colorToString(color);
+    CCSprite* s = NULL;
+    if (e.kind == "splash") { e.dur = 6 * 0.0833f; e.base = "Splash_" + tag; e.n = 6; }
+    else if (e.kind == "cloud") { e.dur = 7 * 0.0833f; e.base = "Cloud"; e.n = 7; }
+    else if (e.kind == "flash") { e.dur = 0.45f; e.base = "FlashEffect"; e.n = 6; }
+    else if (e.kind == "iceblast") { e.dur = 0.5f; e.base = "IceBlast"; e.n = 1; }
+    else if (e.kind == "ball") { e.dur = 0.3f; e.base = "Ball_" + tag; e.n = 1; }
+    else return;
+    CCNode* holder = CCNode::create();
+    holder->setPosition(e.a);
+    if (e.kind == "flash") { GlowNode* g = GlowNode::create(); g->setTag(77); holder->addChild(g); }
+    s = CCSprite::create(); s->setTag(78); holder->addChild(s);
+    fxLayer->addChild(holder);
+    e.node = holder;
+    fxs.push_back(e);
+    updateEffects(0);
+}
+
+void PlayLayer::updateEffects(float dt) {
+    CCSpriteFrameCache* fc = CCSpriteFrameCache::sharedSpriteFrameCache();
+    for (size_t i = 0; i < fxs.size();) {
+        Fx& e = fxs[i];
+        e.t += dt;
+        float k = std::min(1.f, e.t / e.dur);
+        if (e.t >= e.dur + 1e-4f && dt > 0) { e.node->removeFromParent(); fxs.erase(fxs.begin() + i); continue; }
+        CCSprite* s = (CCSprite*)e.node->getChildByTag(78);
+        char name[64];
+        int idx = 1 + std::min(e.n - 1, (int)floorf(k * e.n));
+        if (e.n > 1) sprintf(name, "%s_%03d.png", e.base.c_str(), idx); else sprintf(name, "%s_001.png", e.base.c_str());
+        if (CCSpriteFrame* fr = fc->spriteFrameByName(name)) s->setDisplayFrame(fr);
+        if (e.kind == "splash") s->setScale(1.1f);
+        else if (e.kind == "cloud") s->setScale(1.2f);
+        else if (e.kind == "flash") {
+            s->setScale(1.6f * e.radius); s->setOpacity((GLubyte)(255 * (1 - k)));
+            GlowNode* g = (GlowNode*)e.node->getChildByTag(77);
+            g->radius = e.radius * cell * (0.6f + 1.2f * k); g->alpha = 1 - k;
+        } else if (e.kind == "iceblast") { s->setScale(0.6f + 1.6f * k); s->setOpacity((GLubyte)(255 * (1 - k))); }
+        else if (e.kind == "ball") {
+            s->setScale(0.8f);
+            e.node->setPosition(ccp(e.a.x + (e.b.x - e.a.x) * k, e.a.y + (e.b.y - e.a.y) * k + sinf(k * 3.14159265f) * 30));
+        }
+        i++;
+    }
+    for (size_t i = 0; i < popups.size();) {
+        Popup& p = popups[i];
+        p.t += dt;
+        if (p.t < 0) { p.lbl->setVisible(false); i++; continue; }
+        float sh = p.t < 0.8f ? 1.f : 1 - powf((p.t - 0.8f) / 0.4f, 2);
+        if (p.t >= 1.2f || sh <= 0.01f) { p.lbl->removeFromParent(); popups.erase(popups.begin() + i); continue; }
+        float v = p.pts / p.mod, tier = v >= 500 ? 1.3f : v >= 400 ? 1.2f : v >= 300 ? 1.1f : v >= 200 ? 1.0f : v >= 100 ? 0.9f : 0.8f;
+        p.lbl->setVisible(true);
+        p.lbl->setScale(tier * 1.04f * sh);
+        p.lbl->setPosition(ccp(p.pos.x, p.pos.y + 4 + 14.5f * (p.t / 1.2f)));
+        i++;
+    }
+}
+
+// PlayLayer::showScore: one label per cell (points landing on the same cell merge into the older label), delayed until the chain animation ends
+void PlayLayer::addScore(int pts, AStarNode* at, int color) {
+    if (pts <= 0 || !at) return;
+    float mod = GameTurnManager::levelModVal(level);
+    int total = pts;
+    for (Popup& o : popups) if (o.cell == at && o.t < 1.2f) { total += o.pts; o.t = 1.2f; }
+    char b[16]; sprintf(b, "%d", total);
+    CCLabelBMFont* l = CCLabelBMFont::create(b, "scoreFont2-hd.fnt");
+    int hex = (int)strtol(kScoreColors[color >= 1 && color <= 6 ? color : 0][0] ? kScoreColors[color] : "ffffff", NULL, 16);
+    l->setColor(ccc3((hex >> 16) & 255, (hex >> 8) & 255, hex & 255));
+    fxLayer->addChild(l, 10);
+    Popup p; p.lbl = l; p.cell = at; p.pts = total; p.mod = mod; p.t = -0.26f; p.pos = posOf(at);
+    l->setVisible(false);
+    popups.push_back(p);
 }

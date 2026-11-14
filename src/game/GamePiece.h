@@ -27,6 +27,8 @@ public:
     // PlayLayer sets the layer that holds the blob shadows (drawn under every piece)
     static cocos2d::CCNode* shadowLayer;
     virtual void update(float dt);
+    // PlayLayer::addPiece enter: scale .1 -> 1 and fade in, linear over 0.3s
+    void startEnter();
     virtual void onExit();
 protected:
     PieceColor m_color = kColorGreen;
@@ -34,5 +36,6 @@ protected:
     bool m_turnSensitive = false;
     float m_idleTimer = 4;
     cocos2d::CCSprite* m_shadow = NULL;
+    float m_enterT = -1;
     cocos2d::CCSprite* m_count = NULL;
 };

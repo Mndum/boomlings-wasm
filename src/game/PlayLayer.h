@@ -43,4 +43,13 @@ private:
     void landed(cocos2d::CCNode*);
     void endTurn();
     static int levelTarget(int level);
+    // effects (JS drawEffect): frame sequences, glow, ice blast, pipe ball and the floating score labels
+    struct Fx { std::string kind; cocos2d::CCNode* node; float t, dur; cocos2d::CCPoint a, b; int radius; std::string base; int n; };
+    struct Popup { cocos2d::CCLabelBMFont* lbl; AStarNode* cell; int pts; float mod; float t; cocos2d::CCPoint pos; };
+    std::vector<Fx> fxs;
+    std::vector<Popup> popups;
+    cocos2d::CCNode* fxLayer = NULL;
+    void addEffect(const char* kind, AStarNode* at, int color, int radius, AStarNode* to);
+    void addScore(int pts, AStarNode* at, int color);
+    void updateEffects(float dt);
 };

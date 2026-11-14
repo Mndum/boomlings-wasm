@@ -12,7 +12,9 @@ class GameTurnManager {
 public:
     explicit GameTurnManager(AStarGrid* grid) : m_grid(grid) {}
     std::function<int()> level = [] { return 1; };
-    std::function<void(int points, AStarNode* at)> onPoints;
+    std::function<void(int points, AStarNode* at, int color)> onPoints;
+    // visual effects: "cloud", "splash" (colour), "flash" (colour, radius), "iceblast", "ball" (colour, to)
+    std::function<void(const char* kind, AStarNode* at, int color, int radius, AStarNode* to)> onEffect;
     std::function<void(int chainId)> onChain;
     // scoring tables (PlayLayer / GameManager)
     static int basePointsForLen(int n) { return ((n + 1) * n) & ~1; }
@@ -45,5 +47,6 @@ private:
     void handleSpecials();
     void damageStone(AStarNode* n, int dmg);
     void removeNow(AStarNode* n);
-    void givePoints(int base, int chainId, AStarNode* at);
+    void givePoints(int base, int chainId, AStarNode* at, int color);
+    void fx(const char* k, AStarNode* n, int color = 0, int radius = 1, AStarNode* to = NULL) { if (onEffect) onEffect(k, n, color, radius, to); }
 };

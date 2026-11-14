@@ -34,13 +34,16 @@ void GameTurnManager::activateColor(AStarNode* node) {
             GamePiece* q = c->piece;
             if (!q || q == p || q->pieceAttribute() == kAttrStone || q->pieceColor() == p->pieceColor()) continue;
             q->changePiece(p->pieceColor(), q->pieceAttribute());
+            fx("splash", c, p->pieceColor());
         }
+        fx("splash", node, p->pieceColor());
         after(0.45f, [=] { m_pending--; });
     });
 }
 
 void GameTurnManager::startChain(const std::vector<AStarNode*>& group, AStarNode* origin) {
     int chainId = ++m_chainCount;
+    int chainColor = origin->piece ? origin->piece->pieceColor() : 0;
     if (onChain) onChain(chainId);
     for (AStarNode* c : group) { m_chainId[c->piece] = chainId; m_active.insert(c->piece); }
     // destroy nearest to the origin first
@@ -61,7 +64,7 @@ void GameTurnManager::startChain(const std::vector<AStarNode*>& group, AStarNode
         after(0.07f * idx, [=] { if (c->piece && m_chainId[c->piece] == chainId) destroyPiece(c, chainId, idx); });
     }
     int len = (int)group.size();
-    after(0.07f * i + 0.12f, [=] { givePoints(basePointsForLen(len), chainId, ordered.back()); m_pending--; if (m_pending == 0) handleSpecials(); });
+    after(0.07f * i + 0.12f, [=] { givePoints(basePointsForLen(len), chainId, ordered.back(), chainColor); m_pending--; if (m_pending == 0) handleSpecials(); });
 }
 
 void GameTurnManager::destroyPiece(AStarNode* n, int chainId, int idx) {
@@ -77,7 +80,9 @@ void GameTurnManager::destroyPiece(AStarNode* n, int chainId, int idx) {
     m_dying.insert(p);
     n->piece = NULL;
     auto finish = [=] { m_dying.erase(p); p->removeFromParent(); };
-    p->runAnimation("Charge", false, [=] { if (!p->runAnimation("Explode", false, finish)) finish(); });
+    bool hasExplode = AnimLibrary::shared()->get(p->type(), "Explode") != NULL;
+    if (!hasExplode) fx("cloud", n);
+    p->runAnimation("Charge", false, [=] { if (hasExplode) p->runAnimation("Explode", false, finish); else finish(); });
     if (a == kAttrBomb || a == kAttrMegaBomb) {
         m_pending++;
         after(0.38f, [=] { explodeBomb(p, n, chainId); m_pending--; });
@@ -86,6 +91,7 @@ void GameTurnManager::destroyPiece(AStarNode* n, int chainId, int idx) {
 
 // GameTurnManager::checkNewChainFromNode: a bomb clears its surroundings; groups of 4+ in the blast start their own chain
 void GameTurnManager::explodeBomb(GamePiece* bomb, AStarNode* cell, int chainId) {
+    fx("flash", cell, bomb->pieceColor() ? bomb->pieceColor() : 6, bomb->pieceAttribute() == kAttrMegaBomb ? 2 : 1);
     int count = 1; // the bomb itself
     for (AStarNode* c : m_grid->neighborsToNode(cell, bomb->pieceAttribute() == kAttrMegaBomb ? 2 : 1)) {
         GamePiece* q = c->piece;
@@ -97,12 +103,12 @@ void GameTurnManager::explodeBomb(GamePiece* bomb, AStarNode* cell, int chainId)
         m_chainId[q] = chainId;
         destroyPiece(c, chainId, count++);
     }
-    givePoints((basePointsForLen(count + 1)) / 2, chainId, cell);
+    givePoints((basePointsForLen(count + 1)) / 2, chainId, cell, bomb->pieceColor());
 }
 
-void GameTurnManager::givePoints(int base, int chainId, AStarNode* at) {
+void GameTurnManager::givePoints(int base, int chainId, AStarNode* at, int color) {
     int pts = (int)floorf(base * multiplierForChain(chainId) * levelModVal(level()));
-    if (onPoints) onPoints(pts, at);
+    if (onPoints) onPoints(pts, at, color);
 }
 
 void GameTurnManager::damageStone(AStarNode* n, int dmg) {
@@ -143,7 +149,7 @@ void GameTurnManager::handleSpecials() {
                     if (n->piece && n->piece->pieceAttribute() == kAttrSkull) destroyPiece(n, 1, 0);
                 }
             }
-            if (b->piece) removeNow(b);
+            if (b->piece) { fx("cloud", b); removeNow(b); }
             after(0.6f, [=] { m_pending--; });
         });
     }
@@ -165,7 +171,9 @@ void GameTurnManager::updateTurnSensitive() {
             std::vector<AStarNode*> free;
             for (AStarNode* o : n->neighbors) if (!o->piece) free.push_back(o);
             if (!free.empty() && spawnAt) {
-                spawnAt(free[rand() % free.size()]);
+                AStarNode* dst = free[rand() % free.size()];
+                GamePiece* np = spawnAt(dst);
+                fx("ball", n, np ? np->pieceColor() : 1, 1, dst);
                 p->runAnimation("ExitAnim", false, [=] { p->runAnimation("Idle01", true); });
             }
         } else if (p->pieceAttribute() == kAttrChanger) {
@@ -181,10 +189,11 @@ void GameTurnManager::updateTurnSensitive() {
             case kAttrIceBomb:
                 for (AStarNode* o : n->neighbors)
                     if (o->piece && o->piece->pieceAttribute() != kAttrStone && o->piece->pieceAttribute() != kAttrPipe) { o->piece->frozen = true; o->piece->iced = true; }
+                fx("iceblast", n); fx("cloud", n);
                 removeNow(n);
                 break;
             case kAttrSkull: skullDeath = true; break;
-            case kAttrMysteryBox: removeNow(n); break;
+            case kAttrMysteryBox: fx("cloud", n); removeNow(n); break;
             default: break;
         }
     }

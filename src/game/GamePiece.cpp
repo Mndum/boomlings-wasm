@@ -67,12 +67,20 @@ void GamePiece::animationFinished(const std::string& name) {
 }
 
 // the shadow follows the piece (JS: TileShadow01 at +8px below, scale 1.15, alpha .22); tickers show their turn counter
+void GamePiece::startEnter() { m_enterT = 0; setScale(0.1f); setPartOpacity(0); }
 void GamePiece::update(float dt) {
     CCAnimatedSprite::update(dt);
+    if (m_enterT >= 0) {
+        m_enterT += dt;
+        float k = std::min(1.f, m_enterT / 0.3f);
+        setScale(0.1f + 0.9f * k); setPartOpacity((GLubyte)(255 * k));
+        if (k >= 1) m_enterT = -1;
+    }
     if (m_shadow) {
         m_shadow->setVisible(getParent() != NULL && m_name != "Explode");
         m_shadow->setPosition(ccp(getPositionX(), getPositionY() - 4));
         m_shadow->setScale(1.15f * getScale());
+        m_shadow->setOpacity((GLubyte)(56 * m_partOpacity / 255.f));
     }
     if (isTicker()) {
         char n[32]; sprintf(n, "count_num_%d.png", std::min(12, tick));

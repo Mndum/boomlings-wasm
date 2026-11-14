@@ -39,7 +39,7 @@ void CCAnimatedSprite::showFrame() {
         m_holder->addChild(sp);
         m_parts.push_back(sp);
     }
-    for (size_t i = 0; i < m_parts.size(); i++) m_parts[i]->setVisible(i < n);
+    for (size_t i = 0; i < m_parts.size(); i++) { m_parts[i]->setVisible(i < n); m_parts[i]->setOpacity(m_partOpacity); }
     if (!f.single.empty()) {
         CCSpriteFrame* fr = CCSpriteFrameCache::sharedSpriteFrameCache()->spriteFrameByName(f.single.c_str());
         if (fr) {
@@ -83,3 +83,5 @@ void CCAnimatedSprite::update(float dt) {
         showFrame();
     }
 }
+
+void CCAnimatedSprite::setPartOpacity(GLubyte o) { m_partOpacity = o; for (CCSprite* s : m_parts) s->setOpacity(o); }
