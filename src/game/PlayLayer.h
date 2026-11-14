@@ -50,6 +50,7 @@ private:
     std::vector<Popup> popups;
     cocos2d::CCNode* fxLayer = NULL;
     void addEffect(const char* kind, AStarNode* at, int color, int radius, AStarNode* to);
+    cocos2d::CCParticleSystemQuad* spawnParticles(const char* name, cocos2d::CCPoint pos, int z = 5, const cocos2d::ccColor4F* tint = NULL);
     void addScore(int pts, AStarNode* at, int color);
     void updateEffects(float dt);
 };

@@ -1,5 +1,6 @@
 #include "PlayLayer.h"
 #include <deque>
+#include <map>
 #include <emscripten.h>
 USING_NS_CC;
 GamePiece* g_dbgPiece = NULL;
@@ -60,6 +61,7 @@ bool PlayLayer::init() {
     CCSpriteFrameCache* fc = CCSpriteFrameCache::sharedSpriteFrameCache();
     fc->addSpriteFramesWithFile("ObjectSheet-hd.plist");
     fc->addSpriteFramesWithFile("BoomUISheet-hd.plist");
+    fc->addSpriteFramesWithFile("particleImgSheet.plist");
     AnimLibrary::shared()->load("objectDefinitions.plist");
 
     addChild(CCLayerColor::create(ccc4(0x72, 0x4a, 0x23, 255)), -10);
@@ -344,9 +346,47 @@ void PlayLayer::updateEffects(float dt) {
     }
 }
 
+// CCParticleSystemQuad from the game's plists; their texture (e.g. starParticle.png) is a frame of particleImgSheet
+CCParticleSystemQuad* PlayLayer::spawnParticles(const char* name, CCPoint pos, int z, const ccColor4F* tint) {
+    std::string path = CCFileUtils::sharedFileUtils()->fullPathForFilename((std::string(name) + ".plist").c_str());
+    CCDictionary* d = CCDictionary::createWithContentsOfFile(path.c_str());
+    if (!d) return NULL;
+    std::string frame = d->valueForKey("textureFileName")->getCString();
+    d->setObject(CCString::create("particleImgSheet.png"), "textureFileName");
+    CCParticleSystemQuad* p = new CCParticleSystemQuad();
+    if (!p->initWithDictionary(d)) { delete p; return NULL; }
+    p->autorelease();
+    // atlas frames can be stored rotated, which the particle quad ignores: bake the frame into its own texture
+    static std::map<std::string, CCTexture2D*> baked;
+    CCTexture2D*& tex = baked[frame];
+    if (!tex) {
+        CCSprite* s = CCSprite::createWithSpriteFrameName(frame.c_str());
+        if (s) {
+            CCSize sz = s->getContentSize();
+            CCRenderTexture* rt = CCRenderTexture::create((int)ceilf(sz.width), (int)ceilf(sz.height));
+            s->setPosition(ccp(sz.width / 2, sz.height / 2));
+            s->setFlipY(true);
+            rt->begin(); s->visit(); rt->end();
+            tex = rt->getSprite()->getTexture(); tex->retain(); tex->setAntiAliasTexParameters();
+        }
+    }
+    if (tex) { CCSize ts = tex->getContentSize(); p->setTexture(tex); p->setTextureWithRect(tex, CCRectMake(0, 0, ts.width, ts.height)); }
+    // plist sizes are design points; the quad system treats them as pixels of the content-scaled frame buffer
+    float k = 1.0f / CC_CONTENT_SCALE_FACTOR();
+    p->setStartSize(p->getStartSize() * k); p->setStartSizeVar(p->getStartSizeVar() * k);
+    p->setEndSize(p->getEndSize() * k); p->setEndSizeVar(p->getEndSizeVar() * k);
+    p->setPositionType(kCCPositionTypeFree);
+    p->setAutoRemoveOnFinish(true);
+    p->setPosition(pos);
+    if (tint) { p->setStartColor(*tint); p->setEndColor(*tint); }
+    fxLayer->addChild(p, z);
+    return p;
+}
+
 // PlayLayer::showScore: one label per cell (points landing on the same cell merge into the older label), delayed until the chain animation ends
 void PlayLayer::addScore(int pts, AStarNode* at, int color) {
     if (pts <= 0 || !at) return;
+    if (pts >= 40) spawnParticles("starEffect", posOf(at));
     float mod = GameTurnManager::levelModVal(level);
     int total = pts;
     for (Popup& o : popups) if (o.cell == at && o.t < 1.2f) { total += o.pts; o.t = 1.2f; }
