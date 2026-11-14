@@ -27,6 +27,8 @@ bool GamePiece::init(PieceColor color, PieceAttribute attr) {
     if (!initWithType(getTypeForColor(color, attr).c_str())) return false;
     m_color = color; m_attr = attr;
     m_turnSensitive = isTurnSensitive(attr);
+    tick = attr == kAttrSkull ? 8 : (attr == kAttrIceBomb || attr == kAttrMysteryBox) ? 4 : 0;
+    frozen = attr == kAttrStone || attr == kAttrPipe;
     m_idleTimer = 2 + 5 * CCRANDOM_0_1();
     runAnimation("Idle01", false);
     return true;

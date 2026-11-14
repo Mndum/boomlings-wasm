@@ -20,6 +20,12 @@ public:
     static float levelModVal(int level) { return std::max(1.0f, 1 + (level - 1) * 0.1f); }
     // call after a piece landed on `node`
     void pieceLanded(AStarNode* node);
+    // GameManager::turnFinished / PlayLayer::updateTurnSensitive: tick Skulls, Ice Bombs and Mystery Boxes, pipes spawn, Changers recolour
+    void updateTurnSensitive();
+    std::function<GamePiece*(AStarNode*)> spawnAt;   // create a random piece on an empty node (PlayLayer)
+    std::function<void(AStarNode*)> removeSprite;    // hook for effects
+    int bonusGold = 0, timeFrozen = 0;
+    bool skullDeath = false;
     void tick(float dt);
     bool busy() const { return m_pending > 0 || !m_timers.empty(); }
     int chainCount() const { return m_chainCount; }
@@ -28,6 +34,7 @@ private:
     AStarGrid* m_grid;
     std::vector<Timer> m_timers;
     std::set<GamePiece*> m_active, m_dying;
+    std::vector<AStarNode*> m_boxes;
     std::map<GamePiece*, int> m_chainId;
     int m_chainCount = 0, m_pending = 0;
     void after(float t, std::function<void()> fn) { m_timers.push_back({ t, fn }); }
@@ -35,5 +42,8 @@ private:
     void startChain(const std::vector<AStarNode*>& group, AStarNode* origin);
     void destroyPiece(AStarNode* n, int chainId, int idx);
     void explodeBomb(GamePiece* bomb, AStarNode* cell, int chainId);
+    void handleSpecials();
+    void damageStone(AStarNode* n, int dmg);
+    void removeNow(AStarNode* n);
     void givePoints(int base, int chainId, AStarNode* at);
 };

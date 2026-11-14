@@ -28,7 +28,7 @@ public:
         CCSpriteFrameCache::sharedSpriteFrameCache()->addSpriteFramesWithFile("ObjectSheet-hd.plist");
         AnimLibrary::shared()->load("objectDefinitions.plist");
         grid = new AStarGrid(N, N);
-        mgr.level = [] { return 8; };
+        mgr.level = [] { return 14; };
         mgr.countOf = [this](int a) { int c = 0; for (int x = 0; x < N; x++) for (int y = 0; y < N; y++) { AStarNode* n = grid->nodeAt(x, y); if (n->piece && n->piece->pieceAttribute() == a) c++; } return c; };
         for (int i = 0; i < 18; i++) {
             AStarNode* n = grid->nodeAt(rand() % N, rand() % N);
@@ -39,10 +39,17 @@ public:
             addChild(n->piece);
         }
         turn = new GameTurnManager(grid);
-        turn->level = [] { return 8; };
+        turn->level = [] { return 14; };
         turn->onPoints = [this](int p, AStarNode*) { score += p; char b[32]; sprintf(b, "Score %d", score); scoreLbl->setString(b); };
         scoreLbl = CCLabelTTF::create("Score 0", "Arial", 18);
         scoreLbl->setPosition(ccp(160, 450)); addChild(scoreLbl);
+        turn->spawnAt = [this](AStarNode* c) {
+            mgr.incrementChances();
+            c->piece = mgr.createRandomPiece();
+            c->piece->setPosition(posOf(c)); c->piece->setScale(0.75f);
+            addChild(c->piece);
+            return c->piece;
+        };
         scheduleUpdate();
         setTouchEnabled(true);
         return true;
@@ -50,7 +57,13 @@ public:
     ~TestLayer() { delete turn; delete grid; }
     void update(float dt) {
         turn->tick(dt);
-        if (spawnPending && !busy && !turn->busy()) { spawnPending = false; spawn(3); }
+        if (spawnPending && !busy && !turn->busy()) {
+            spawnPending = false;
+            if (turn->timeFrozen > 0) turn->timeFrozen--;
+            else { turn->updateTurnSensitive(); spawn(3); }
+            if (turn->skullDeath) { scoreLbl->setString("A Skull blew up - game over"); busy = true; }
+            else if (!grid->validMoveExists()) { scoreLbl->setString("No moves left"); busy = true; }
+        }
     }
     void spawn(int n) {
         for (int i = 0; i < n * 4 && n > 0; i++) {
@@ -69,7 +82,7 @@ public:
         CCPoint p = convertToNodeSpace(tc->getLocation());
         AStarNode* n = grid->nodeAtPoint(p.x, p.y, cell, ox, oy);
         if (!n) return;
-        if (n->piece) { if (selected && selected->piece) selected->piece->setScale(0.75f); selected = n; n->piece->setScale(0.9f); return; }
+        if (n->piece) { if (n->piece->frozen) return; if (selected && selected->piece) selected->piece->setScale(0.75f); selected = n; n->piece->setScale(0.9f); return; }
         if (!selected) return;
         std::vector<AStarNode*> path;
         if (!grid->findPath(selected, n, path)) return;

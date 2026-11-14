@@ -19,6 +19,10 @@ public:
     PieceColor pieceColor() const { return m_color; }
     PieceAttribute pieceAttribute() const { return m_attr; }
     bool turnSensitive() const { return m_turnSensitive; }
+    // turn counter of tickers (Skull 8, MysteryBox 4, IceBomb 4), stone health, ice overlay / immovable flags
+    int tick = 0, health = 2;
+    bool frozen = false, iced = false, locked = false;
+    bool isTicker() const { return m_attr == kAttrSkull || m_attr == kAttrIceBomb || m_attr == kAttrMysteryBox; }
     virtual void animationFinished(const std::string& name);
 protected:
     PieceColor m_color = kColorGreen;
