@@ -51,6 +51,12 @@ const AnimClip* AnimLibrary::get(const string& type, const string& animName) {
     CCDictionary* anims = K(def, "animations"); CCDictionary* srcAnims = K(src, "animations");
     CCDictionary* anim = K(anims, animName.c_str()); if (!anim) anim = K(srcAnims, animName.c_str());
     if (!anim) return NULL;
+    string single = S(anim, "singleFrame");
+    if (!single.empty()) { // one fixed sprite frame (Stone)
+        AnimClip* c1 = new AnimClip(); c1->delay = 0.0833f; c1->looped = false;
+        AnimFrame f1; f1.single = replaceAll(single, "xyz", tag.empty() ? "xyz" : tag); c1->frames.push_back(f1);
+        m_cache[key] = c1; return c1;
+    }
     string animDesc = S(def, "animDesc"); if (animDesc.empty()) animDesc = S(src, "animDesc");
     // animation "copy": use a local sibling animation, or a GlobalAnimations entry
     string frameBase; string delayS = S(anim, "delay"), loopedS = S(anim, "looped"), framesS = S(anim, "frames");

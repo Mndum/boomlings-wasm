@@ -1,5 +1,6 @@
 #include "GamePiece.h"
 USING_NS_CC;
+CCNode* GamePiece::shadowLayer = NULL;
 
 static bool isTurnSensitive(int attr) {
     return attr == kAttrSkull || attr == kAttrIceBomb || attr == kAttrPipe || attr == kAttrMysteryBox || attr == kAttrChanger;
@@ -30,7 +31,12 @@ bool GamePiece::init(PieceColor color, PieceAttribute attr) {
     tick = attr == kAttrSkull ? 8 : (attr == kAttrIceBomb || attr == kAttrMysteryBox) ? 4 : 0;
     frozen = attr == kAttrStone || attr == kAttrPipe;
     m_idleTimer = 2 + 5 * CCRANDOM_0_1();
+    m_holder->setPosition(ccp(0.165f, 1.2f)); // PlayLayer draws the animated sprite at (+0.33, -2.4) px from the cell centre
     runAnimation("Idle01", false);
+    if (shadowLayer) {
+        m_shadow = CCSprite::createWithSpriteFrameName("TileShadow01_001.png");
+        m_shadow->setOpacity(56); shadowLayer->addChild(m_shadow);
+    }
     return true;
 }
 void GamePiece::changePiece(PieceColor color, PieceAttribute attr) {
@@ -58,4 +64,25 @@ void GamePiece::animationFinished(const std::string& name) {
             runAnimation(CCRANDOM_0_1() < 0.5f ? "Idle02" : "Idle03", false);
         } else runAnimation("Idle01", false);
     }
+}
+
+// the shadow follows the piece (JS: TileShadow01 at +8px below, scale 1.15, alpha .22); tickers show their turn counter
+void GamePiece::update(float dt) {
+    CCAnimatedSprite::update(dt);
+    if (m_shadow) {
+        m_shadow->setVisible(getParent() != NULL && m_name != "Explode");
+        m_shadow->setPosition(ccp(getPositionX(), getPositionY() - 4));
+        m_shadow->setScale(1.15f * getScale());
+    }
+    if (isTicker()) {
+        char n[32]; sprintf(n, "count_num_%d.png", std::min(12, tick));
+        CCSpriteFrame* fr = CCSpriteFrameCache::sharedSpriteFrameCache()->spriteFrameByName(n);
+        if (!m_count) { m_count = CCSprite::create(); addChild(m_count, 50); m_count->setPosition(ccp(12, 13)); }
+        if (fr) m_count->setDisplayFrame(fr);
+        m_count->setVisible(m_name != "Explode");
+    }
+}
+void GamePiece::onExit() {
+    if (m_shadow) { m_shadow->removeFromParent(); m_shadow = NULL; }
+    CCAnimatedSprite::onExit();
 }

@@ -3,6 +3,18 @@
 #include <emscripten.h>
 USING_NS_CC;
 
+// scissors its children to the region below the board: PlayLayer clips the bottom panel 10px under the board's edge
+class PanelClip : public CCNode {
+public:
+    float height = 0;
+    virtual void visit() {
+        glEnable(GL_SCISSOR_TEST);
+        CCEGLView::sharedOpenGLView()->setScissorInPoints(0, 0, 320, height);
+        CCNode::visit();
+        glDisable(GL_SCISSOR_TEST);
+    }
+};
+
 static const int kSpecialIntro[][2] = { {3, kAttrIceBomb}, {5, kAttrPipe}, {7, kAttrSkull}, {9, kAttrMysteryBox}, {11, kAttrStone}, {13, kAttrChanger} };
 
 CCScene* PlayLayer::scene() { CCScene* s = CCScene::create(); s->addChild(PlayLayer::create()); return s; }
@@ -36,6 +48,7 @@ bool PlayLayer::init() {
         addChild(t, -5);
     }
     hintLayer = CCNode::create(); addChild(hintLayer, -4);
+    CCNode* shadows = CCNode::create(); addChild(shadows, -3); GamePiece::shadowLayer = shadows;
     boardLayer = CCLayer::create(); addChild(boardLayer, 0);
     layoutHud();
 
@@ -58,9 +71,18 @@ PlayLayer::~PlayLayer() { delete turn; delete grid; }
 void PlayLayer::layoutHud() {
     CCSprite* bottom = CCSprite::createWithSpriteFrameName("bottomBG_001.png");
     bottom->setAnchorPoint(ccp(0.5f, 0)); bottom->setPosition(ccp(160, 0));
-    // PlayLayer stretches the panel to start 3.56px above the board's bottom edge
-    bottom->setScaleY((960 - 742.64f) / 2 / bottom->getContentSize().height);
-    addChild(bottom, 5);
+    // PlayLayer stretches the panel from 3.56px above the board's bottom edge and clips it at 10px below it; the board casts a shadow on its last row
+    {
+        const float topPx = 743.64f, clipPx = 755.27f;
+        CCSize cs = bottom->getContentSize();
+        float scaleY = (960 - topPx) / 2 / cs.height;
+        bottom->setScaleY(scaleY);
+        CCLayerGradient* sh = CCLayerGradient::create(ccc4(20, 10, 0, 0), ccc4(20, 10, 0, 179), ccp(0, -1));
+        sh->setContentSize(CCSizeMake(320, 8.8f)); sh->setPosition(ccp(0, (960 - clipPx) / 2));
+        addChild(sh, 4);
+    }
+    PanelClip* clip = new PanelClip(); clip->autorelease(); clip->height = (960 - 755.27f) / 2;
+    clip->addChild(bottom); addChild(clip, 5);
     CCSprite* top = CCSprite::createWithSpriteFrameName("topBar_001.png");
     top->setAnchorPoint(ccp(0.5f, 1)); top->setPosition(ccp(160, 479.75f));
     addChild(top, 5);
@@ -135,6 +157,16 @@ void PlayLayer::startLevel() {
         for (int x = 0; x < N; x++) for (int y = 0; y < N; y++) if (!grid->nodeAt(x, y)->piece) free.push_back(grid->nodeAt(x, y));
         if (!free.empty()) { AStarNode* n = free[rand() % free.size()]; GamePiece* p = GamePiece::create(GamePieceManager::randomPieceColor(level), (PieceAttribute)s[1]); n->piece = p; p->setPosition(posOf(n)); boardLayer->addChild(p); }
     }
+    if (emscripten_run_script_int("location.search.indexOf('pieces')>=0")) {
+        // pixel-comparison fixture: attribute per column (rows 0-5 = colours 1-6), extras in the top two rows
+        const int cols[8] = { kAttrBlock, kAttrBomb, kAttrColor, kAttrMegaBomb, kAttrMegaColor, kAttrIceBomb, kAttrPipe, kAttrSkull };
+        for (int x = 0; x < 8; x++) for (int c = 1; c <= 6; c++) { AStarNode* n = grid->nodeAt(x, 7 - (c - 1)); GamePiece* g = GamePiece::create((PieceColor)c, (PieceAttribute)cols[x]); n->piece = g; g->setPosition(posOf(n)); boardLayer->addChild(g); }
+        for (int c = 1; c <= 6; c++) {
+            AStarNode* n = grid->nodeAt(c - 1, 1); GamePiece* g = GamePiece::create((PieceColor)c, kAttrMysteryBox); n->piece = g; g->setPosition(posOf(n)); boardLayer->addChild(g);
+            n = grid->nodeAt(c - 1, 0); g = GamePiece::create((PieceColor)c, kAttrChanger); n->piece = g; g->setPosition(posOf(n)); boardLayer->addChild(g);
+        }
+        for (int x = 6; x < 8; x++) { AStarNode* n = grid->nodeAt(x, 1); GamePiece* g = GamePiece::create(kColorGreen, kAttrStone); n->piece = g; g->setPosition(posOf(n)); boardLayer->addChild(g); }
+    } else
     if (!emscripten_run_script_int("location.search.indexOf('empty')>=0"))
     spawnRandom(level == 1 ? 10 : std::min(20, 15 + level / 4));
     phase = kIdle;

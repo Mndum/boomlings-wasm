@@ -59,8 +59,10 @@ void CCAnimatedSprite::showFrame() {
         sp->setRotation(p.rot); sp->setFlipX(p.fx); sp->setFlipY(p.fy); sp->setZOrder((int)i);
     }
 }
+#include <emscripten.h>
 void CCAnimatedSprite::update(float dt) {
-    if (!m_clip) return;
+    static int freeze = emscripten_run_script_int("location.search.indexOf('freeze')>=0");
+    if (!m_clip || freeze) return;
     m_acc += dt;
     while (m_acc >= m_clip->delay) {
         m_acc -= m_clip->delay;

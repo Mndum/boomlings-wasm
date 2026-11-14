@@ -24,9 +24,15 @@ public:
     bool frozen = false, iced = false, locked = false;
     bool isTicker() const { return m_attr == kAttrSkull || m_attr == kAttrIceBomb || m_attr == kAttrMysteryBox; }
     virtual void animationFinished(const std::string& name);
+    // PlayLayer sets the layer that holds the blob shadows (drawn under every piece)
+    static cocos2d::CCNode* shadowLayer;
+    virtual void update(float dt);
+    virtual void onExit();
 protected:
     PieceColor m_color = kColorGreen;
     PieceAttribute m_attr = kAttrBlock;
     bool m_turnSensitive = false;
     float m_idleTimer = 4;
+    cocos2d::CCSprite* m_shadow = NULL;
+    cocos2d::CCSprite* m_count = NULL;
 };
