@@ -79,6 +79,7 @@ void GameTurnManager::destroyPiece(AStarNode* n, int chainId, int idx) {
     if (a == kAttrStone && p->health > 0 && !chainId) { damageStone(n, 1); return; }
     m_dying.insert(p);
     n->piece = NULL;
+    if (a == kAttrBomb || a == kAttrMegaBomb || a == kAttrMysteryBox) fx("charge", n, 0, a == kAttrMegaBomb ? 2 : 1);
     auto finish = [=] { m_dying.erase(p); p->removeFromParent(); };
     bool hasExplode = AnimLibrary::shared()->get(p->type(), "Explode") != NULL;
     if (!hasExplode) fx("cloud", n);
@@ -116,6 +117,7 @@ void GameTurnManager::damageStone(AStarNode* n, int dmg) {
     s->health -= dmg;
     if (s->health <= 0) { s->health = 0; destroyPiece(n, 1, 0); return; }
     s->runAnimation("Idle02", true);
+    fx("stonehit", n);
 }
 
 void GameTurnManager::removeNow(AStarNode* n) {

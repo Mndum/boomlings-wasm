@@ -6,6 +6,7 @@
 #include "GamePieceManager.h"
 #include "GameTurnManager.h"
 #include <set>
+#include <map>
 
 class PlayLayer : public cocos2d::CCLayer {
 public:
@@ -50,7 +51,13 @@ private:
     std::vector<Popup> popups;
     cocos2d::CCNode* fxLayer = NULL;
     void addEffect(const char* kind, AStarNode* at, int color, int radius, AStarNode* to);
-    cocos2d::CCParticleSystemQuad* spawnParticles(const char* name, cocos2d::CCPoint pos, int z = 5, const cocos2d::ccColor4F* tint = NULL);
+    cocos2d::CCParticleSystemQuad* spawnParticles(const char* name, cocos2d::CCPoint pos, int z = 5, const float* tint = NULL, cocos2d::CCNode* parent = NULL);
+    cocos2d::CCNode* trailLayer = NULL;
+    GamePiece* trailPiece = NULL;
+    cocos2d::CCParticleSystemQuad* trail = NULL;
+    struct Warn { cocos2d::CCParticleSystemQuad* ps; int tick; };
+    std::map<GamePiece*, Warn> warns;
+    void updateWarns();
     void addScore(int pts, AStarNode* at, int color);
     void updateEffects(float dt);
 };

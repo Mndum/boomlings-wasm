@@ -74,6 +74,7 @@ bool PlayLayer::init() {
     hintLayer = CCNode::create(); addChild(hintLayer, -4);
     CCNode* shadows = CCNode::create(); addChild(shadows, -3); GamePiece::shadowLayer = shadows;
     boardLayer = CCLayer::create(); addChild(boardLayer, 0);
+    trailLayer = CCNode::create(); addChild(trailLayer, -2);
     fxLayer = CCNode::create(); addChild(fxLayer, 3);
     layoutHud();
 
@@ -250,9 +251,16 @@ void PlayLayer::movePiece(AStarNode* from, AStarNode* to) {
     acts->addObject(CCCallFuncN::create(this, callfuncN_selector(PlayLayer::landed)));
     from->piece = NULL; to->piece = pc; landing = to; phase = kMoving;
     pc->runAction(CCSequence::create(acts));
+    // PlayLayer::attachTrailToPiece: trailEffect tinted with the piece's strong colour, emitted in world space under the pieces
+    static const float strong[7][3] = { {1,1,1}, {100/255.f,1,80/255.f}, {1,110/255.f,150/255.f}, {1,165/255.f,75/255.f}, {100/255.f,165/255.f,1}, {1,110/255.f,250/255.f}, {1,1,100/255.f} };
+    int c = pc->pieceColor();
+    trail = spawnParticles("trailEffect", pc->getPosition() + ccp(0, 5), 0, strong[c >= 0 && c <= 6 ? c : 0], trailLayer);
+    trailPiece = pc;
 }
 
 void PlayLayer::landed(CCNode*) {
+    if (trail) { trail->stopSystem(); trail = NULL; }
+    trailPiece = NULL;
     turn->pieceLanded(landing);
     phase = kResolving;
 }
@@ -260,6 +268,7 @@ void PlayLayer::landed(CCNode*) {
 void PlayLayer::endTurn() {
     if (levelPoints >= target) {
         showBig("LEVEL COMPLETE!", 1.6f);
+        spawnParticles("levelComplete01", ccp(160, 107.4f), 6); spawnParticles("levelComplete02", ccp(160, 107.4f), 6);
         for (int x = 0; x < N; x++) for (int y = 0; y < N; y++) {
             AStarNode* n = grid->nodeAt(x, y);
             if (n->piece) { n->piece->removeFromParent(); n->piece = NULL; }
@@ -279,9 +288,36 @@ void PlayLayer::endTurn() {
 
 void PlayLayer::update(float dt) {
     turn->tick(dt);
+    if (trail && trailPiece) trail->setPosition(trailPiece->getPosition() + ccp(0, 5));
+    updateWarns();
     updateEffects(dt);
     if (phase == kResolving && !turn->busy()) endTurn();
     else if (phase == kLevelOver) { levelTimer -= dt; if (levelTimer <= 0) startLevel(); }
+}
+
+// Skull_w_* / Ice_w_* glow on tickers that are about to detonate (PlayLayer warn effects)
+void PlayLayer::updateWarns() {
+    std::map<GamePiece*, int> want;
+    for (int x = 0; x < N; x++) for (int y = 0; y < N; y++) {
+        GamePiece* p = grid->nodeAt(x, y)->piece;
+        if (!p) continue;
+        PieceAttribute a = p->pieceAttribute();
+        if ((a == kAttrSkull && p->tick <= 3) || (a == kAttrIceBomb && p->tick <= 2)) want[p] = p->tick;
+    }
+    for (auto it = warns.begin(); it != warns.end();) {
+        auto w = want.find(it->first);
+        if (w == want.end() || w->second != it->second.tick) { it->second.ps->stopSystem(); it->second.ps->release(); it = warns.erase(it); }
+        else { it->second.ps->setPosition(it->first->getPosition()); ++it; }
+    }
+    for (auto& w : want) {
+        if (warns.count(w.first)) continue;
+        GamePiece* p = w.first; int t = w.second;
+        char nm[24];
+        if (p->pieceAttribute() == kAttrSkull) sprintf(nm, "Skull_w_0%d", t <= 1 ? 3 : t <= 2 ? 2 : 1);
+        else sprintf(nm, "Ice_w_0%d", t <= 1 ? 2 : 1);
+        CCParticleSystemQuad* ps = spawnParticles(nm, p->getPosition(), 4);
+        if (ps) { ps->retain(); warns[p] = { ps, t }; }
+    }
 }
 
 static const char* kScoreColors[7] = { "", "69ff69", "ff6464", "ffa63c", "64a5ff", "ff78ff", "fff03c" };
@@ -296,6 +332,8 @@ void PlayLayer::addEffect(const char* kind, AStarNode* at, int color, int radius
     else if (e.kind == "flash") { e.dur = 0.45f; e.base = "FlashEffect"; e.n = 6; }
     else if (e.kind == "iceblast") { e.dur = 0.5f; e.base = "IceBlast"; e.n = 1; }
     else if (e.kind == "ball") { e.dur = 0.3f; e.base = "Ball_" + tag; e.n = 1; }
+    else if (e.kind == "charge") { CCParticleSystemQuad* ps = spawnParticles("chargeEffect", e.a, 4); if (ps && radius > 1) ps->setScale((float)radius); return; }
+    else if (e.kind == "stonehit") { spawnParticles("stoneHit", e.a, 4); return; }
     else return;
     CCNode* holder = CCNode::create();
     holder->setPosition(e.a);
@@ -347,7 +385,7 @@ void PlayLayer::updateEffects(float dt) {
 }
 
 // CCParticleSystemQuad from the game's plists; their texture (e.g. starParticle.png) is a frame of particleImgSheet
-CCParticleSystemQuad* PlayLayer::spawnParticles(const char* name, CCPoint pos, int z, const ccColor4F* tint) {
+CCParticleSystemQuad* PlayLayer::spawnParticles(const char* name, CCPoint pos, int z, const float* tint, CCNode* parent) {
     std::string path = CCFileUtils::sharedFileUtils()->fullPathForFilename((std::string(name) + ".plist").c_str());
     CCDictionary* d = CCDictionary::createWithContentsOfFile(path.c_str());
     if (!d) return NULL;
@@ -378,8 +416,12 @@ CCParticleSystemQuad* PlayLayer::spawnParticles(const char* name, CCPoint pos, i
     p->setPositionType(kCCPositionTypeFree);
     p->setAutoRemoveOnFinish(true);
     p->setPosition(pos);
-    if (tint) { p->setStartColor(*tint); p->setEndColor(*tint); }
-    fxLayer->addChild(p, z);
+    if (tint) { // PlayLayer tints with the strong colour but keeps the plist alpha
+        ccColor4F s = p->getStartColor(), e = p->getEndColor();
+        s.r = e.r = tint[0]; s.g = e.g = tint[1]; s.b = e.b = tint[2];
+        p->setStartColor(s); p->setEndColor(e); p->setStartColorVar(ccc4f(0, 0, 0, p->getStartColorVar().a)); p->setEndColorVar(ccc4f(0, 0, 0, p->getEndColorVar().a));
+    }
+    (parent ? parent : fxLayer)->addChild(p, z);
     return p;
 }
 
