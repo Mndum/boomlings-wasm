@@ -30,6 +30,7 @@ void GameTurnManager::activateColor(AStarNode* node) {
     after(0.3f, [=] {
         p->changePiece(p->pieceColor(), kAttrBlock);
         p->runAnimation("Idle01", true);
+        snd(mega ? "megaSplat001.ogg" : "splat03.ogg", 0.8f);
         for (AStarNode* c : m_grid->neighborsToNode(node, mega ? 2 : 1)) {
             GamePiece* q = c->piece;
             if (!q || q == p || q->pieceAttribute() == kAttrStone || q->pieceColor() == p->pieceColor()) continue;
@@ -45,6 +46,8 @@ void GameTurnManager::startChain(const std::vector<AStarNode*>& group, AStarNode
     int chainId = ++m_chainCount;
     int chainColor = origin->piece ? origin->piece->pieceColor() : 0;
     if (onChain) onChain(chainId);
+    if (chainId > 1) snd("chainTest01.ogg", 0.8f);
+    if (group.size() >= 10) snd("whoa.ogg", 0.9f);
     for (AStarNode* c : group) { m_chainId[c->piece] = chainId; m_active.insert(c->piece); }
     // destroy nearest to the origin first
     std::map<AStarNode*, int> dist;
@@ -79,6 +82,9 @@ void GameTurnManager::destroyPiece(AStarNode* n, int chainId, int idx) {
     if (a == kAttrStone && p->health > 0 && !chainId) { damageStone(n, 1); return; }
     m_dying.insert(p);
     n->piece = NULL;
+    snd(idx % 2 ? "pop2b2.ogg" : "pops2a.ogg", 0.6f);
+    if (a == kAttrBomb || a == kAttrMegaBomb) snd(a == kAttrMegaBomb ? "megaExplode001.ogg" : "bombbbb.ogg", 0.9f);
+    if (a == kAttrStone) snd("stoneHit2.ogg", 0.8f);
     if (a == kAttrBomb || a == kAttrMegaBomb || a == kAttrMysteryBox) fx("charge", n, 0, a == kAttrMegaBomb ? 2 : 1);
     auto finish = [=] { m_dying.erase(p); p->removeFromParent(); };
     bool hasExplode = AnimLibrary::shared()->get(p->type(), "Explode") != NULL;
@@ -118,6 +124,7 @@ void GameTurnManager::damageStone(AStarNode* n, int dmg) {
     if (s->health <= 0) { s->health = 0; destroyPiece(n, 1, 0); return; }
     s->runAnimation("Idle02", true);
     fx("stonehit", n);
+    snd("stoneHit1_m.ogg", 0.8f);
 }
 
 void GameTurnManager::removeNow(AStarNode* n) {
@@ -137,6 +144,7 @@ void GameTurnManager::handleSpecials() {
         m_pending++;
         t += 0.5f;
         after(t, [=] {
+            snd("mysteryTrigger001.ogg", 0.9f); snd("spinner.ogg", 0.6f);
             int reward = rand() % 5, skulls = 0;
             for (int x = 0; x < m_grid->width(); x++) for (int y = 0; y < m_grid->height(); y++) {
                 AStarNode* n = m_grid->nodeAt(x, y);
@@ -151,6 +159,7 @@ void GameTurnManager::handleSpecials() {
                     if (n->piece && n->piece->pieceAttribute() == kAttrSkull) destroyPiece(n, 1, 0);
                 }
             }
+            { static const char* rw[3] = { "mysteryReward001.ogg", "mysteryReward002.ogg", "mysteryReward003.ogg" }; snd(rw[rand() % 3], 0.9f); }
             if (b->piece) { fx("cloud", b); removeNow(b); }
             after(0.6f, [=] { m_pending--; });
         });
@@ -169,6 +178,7 @@ void GameTurnManager::updateTurnSensitive() {
         if (p->isTicker()) {
             p->tick = std::max(0, p->tick - 1);
             if (p->tick == 0) timedOut.push_back(n);
+            else if (p->pieceAttribute() == kAttrSkull && p->tick <= 3) snd("alert04.ogg", 0.6f);
         } else if (p->pieceAttribute() == kAttrPipe) {
             std::vector<AStarNode*> free;
             for (AStarNode* o : n->neighbors) if (!o->piece) free.push_back(o);
@@ -182,6 +192,7 @@ void GameTurnManager::updateTurnSensitive() {
             int c = p->pieceColor();
             for (int i = 0; i < 10 && c == p->pieceColor(); i++) c = 1 + rand() % 6;
             p->changePiece((PieceColor)c, kAttrChanger);
+            snd("splatSound.ogg", 0.5f);
         }
     }
     for (AStarNode* n : timedOut) {
@@ -191,6 +202,7 @@ void GameTurnManager::updateTurnSensitive() {
             case kAttrIceBomb:
                 for (AStarNode* o : n->neighbors)
                     if (o->piece && o->piece->pieceAttribute() != kAttrStone && o->piece->pieceAttribute() != kAttrPipe) { o->piece->frozen = true; o->piece->iced = true; }
+                snd("frostBoom2.ogg", 0.9f);
                 fx("iceblast", n); fx("cloud", n);
                 removeNow(n);
                 break;

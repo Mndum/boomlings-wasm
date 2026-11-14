@@ -1,4 +1,5 @@
 #include "PlayLayer.h"
+#include "Sfx.h"
 #include <deque>
 #include <map>
 #include <emscripten.h>
@@ -84,8 +85,10 @@ bool PlayLayer::init() {
     turn->level = [this] { return level; };
     turn->onPoints = [this](int p, AStarNode* at, int color) { score += p; levelPoints += p; updateHud(); addScore(p, at, color); };
     turn->onEffect = [this](const char* k, AStarNode* at, int color, int radius, AStarNode* to) { addEffect(k, at, color, radius, to); };
+    turn->onSound = [](const char* f, float v) { Sfx::play(f, v); };
     turn->spawnAt = [this](AStarNode* n) { return spawnAt(n, true); };
 
+    Sfx::music("BoomlingsLoop.mp3", 0.45f);
     scheduleUpdate();
     setTouchEnabled(true);
     startLevel();
@@ -157,7 +160,16 @@ GamePiece* PlayLayer::spawnAt(AStarNode* n, bool animate) {
     n->piece = p;
     p->setPosition(posOf(n));
     boardLayer->addChild(p);
-    if (animate) p->startEnter();
+    if (animate) {
+        p->startEnter();
+        switch (p->pieceAttribute()) {
+            case kAttrSkull: Sfx::play("skullTest.ogg", 0.7f); break;
+            case kAttrMysteryBox: Sfx::play("mysteryAppear.ogg", 0.8f); break;
+            case kAttrPipe: Sfx::play("pipeenter02.ogg", 0.7f); break;
+            case kAttrMegaBomb: case kAttrMegaColor: Sfx::play("megaEnter.ogg", 0.7f); break;
+            default: break;
+        }
+    }
     return p;
 }
 
@@ -179,6 +191,7 @@ void PlayLayer::startLevel() {
     turn->timeFrozen = 0;
     char b[32]; sprintf(b, "LEVEL %d", level);
     showBig(b, 1.5f);
+    Sfx::play("lvlup003.ogg", 0.8f);
     // first appearance of a special on its level
     for (auto& s : kSpecialIntro) if (s[0] == level && countOf(s[1]) < 1) {
         std::vector<AStarNode*> free;
@@ -213,6 +226,7 @@ void PlayLayer::startLevel() {
 
 // reachable empty cells for the selected piece (flood fill over empty nodes)
 void PlayLayer::setSelected(AStarNode* n) {
+    if (n) Sfx::play("click01.ogg", 0.5f); else if (selected) Sfx::play("click05.ogg", 0.3f);
     selected = n;
     hintLayer->removeAllChildren();
     if (!n) { selectSprite->setVisible(false); return; }
@@ -268,10 +282,11 @@ void PlayLayer::landed(CCNode*) {
 void PlayLayer::endTurn() {
     if (levelPoints >= target) {
         showBig("LEVEL COMPLETE!", 1.6f);
+        Sfx::play("levelComplete002.ogg", 0.9f);
         spawnParticles("levelComplete01", ccp(160, 107.4f), 6); spawnParticles("levelComplete02", ccp(160, 107.4f), 6);
         for (int x = 0; x < N; x++) for (int y = 0; y < N; y++) {
             AStarNode* n = grid->nodeAt(x, y);
-            if (n->piece) { n->piece->removeFromParent(); n->piece = NULL; }
+            if (n->piece) { n->piece->removeFromParent(); n->piece = NULL; Sfx::play(rand() % 2 ? "pop2b2.ogg" : "pops2a.ogg", 0.4f); }
         }
         phase = kLevelOver; levelTimer = 1.6f;
         return;
@@ -281,8 +296,8 @@ void PlayLayer::endTurn() {
         turn->updateTurnSensitive();
         spawnRandom(level < 4 ? 2 : 3);
     }
-    if (turn->skullDeath) { showBig("A SKULL BLEW UP", 99); phase = kDead; return; }
-    if (!grid->validMoveExists()) { showBig("NO MOVES LEFT", 99); phase = kDead; return; }
+    if (turn->skullDeath) { Sfx::stopMusic(); Sfx::play("skullEnding002.ogg", 1); showBig("A SKULL BLEW UP", 99); phase = kDead; return; }
+    if (!grid->validMoveExists()) { Sfx::stopMusic(); Sfx::play("res02.ogg", 0.8f); showBig("NO MOVES LEFT", 99); phase = kDead; return; }
     phase = kIdle;
 }
 

@@ -16,6 +16,7 @@ public:
     // visual effects: "cloud", "splash" (colour), "flash" (colour, radius), "iceblast", "ball" (colour, to)
     std::function<void(const char* kind, AStarNode* at, int color, int radius, AStarNode* to)> onEffect;
     std::function<void(int chainId)> onChain;
+    std::function<void(const char* file, float volume)> onSound;
     // scoring tables (PlayLayer / GameManager)
     static int basePointsForLen(int n) { return ((n + 1) * n) & ~1; }
     static int multiplierForChain(int c) { static const int t[7] = { 1, 1, 2, 4, 8, 12, 16 }; return c + 1 < 8 ? t[c] : 20; }
@@ -48,5 +49,6 @@ private:
     void damageStone(AStarNode* n, int dmg);
     void removeNow(AStarNode* n);
     void givePoints(int base, int chainId, AStarNode* at, int color);
+    void snd(const char* f, float v) { if (onSound) onSound(f, v); }
     void fx(const char* k, AStarNode* n, int color = 0, int radius = 1, AStarNode* to = NULL) { if (onEffect) onEffect(k, n, color, radius, to); }
 };
