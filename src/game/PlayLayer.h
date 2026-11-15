@@ -5,6 +5,7 @@
 #include "AStarGrid.h"
 #include "GamePieceManager.h"
 #include "GameTurnManager.h"
+#include "PauseLayer.h"
 #include <set>
 #include <map>
 
@@ -17,7 +18,7 @@ public:
     virtual void ccTouchesBegan(cocos2d::CCSet* t, cocos2d::CCEvent* e);
     virtual void update(float dt);
 private:
-    enum Phase { kIdle, kMoving, kResolving, kLevelOver, kDead };
+    enum Phase { kIdle, kMoving, kResolving, kLevelOver, kDead, kPow };
     static const int N = 8;
     float cell = 40, ox = 0, oy = 107.4f;
     AStarGrid* grid = NULL;
@@ -60,4 +61,19 @@ private:
     void updateWarns();
     void addScore(int pts, AStarNode* at, int color);
     void updateEffects(float dt);
+    // pause + powerup slots
+    bool paused = false;
+    float playTime = 0, powTimer = 0;
+    PauseLayer* pauseLayer = NULL;
+    cocos2d::CCLabelBMFont* frozenLbl = NULL;
+    struct Slot { std::string tag; int rank; int charges; cocos2d::CCSprite *icon, *badge; cocos2d::CCRect r; };
+    std::vector<Slot> slots;
+    void setupSlots();
+    void updateSlots();
+    bool canUsePower(const Slot& s) const;
+    void usePower(Slot& s);
+    void pauseGame();
+    void setTreePaused(cocos2d::CCNode* n, bool p);
+    void restart();
+    void completeLevel();
 };

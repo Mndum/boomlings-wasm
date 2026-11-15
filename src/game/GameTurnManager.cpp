@@ -46,7 +46,7 @@ void GameTurnManager::startChain(const std::vector<AStarNode*>& group, AStarNode
     int chainId = ++m_chainCount;
     int chainColor = origin->piece ? origin->piece->pieceColor() : 0;
     if (onChain) onChain(chainId);
-    if (chainId > 1) snd("chainTest01.ogg", 0.8f);
+    if (chainId > 1 && !flatMult) snd("chainTest01.ogg", 0.8f);
     if (group.size() >= 10) snd("whoa.ogg", 0.9f);
     for (AStarNode* c : group) { m_chainId[c->piece] = chainId; m_active.insert(c->piece); }
     // destroy nearest to the origin first
@@ -114,7 +114,7 @@ void GameTurnManager::explodeBomb(GamePiece* bomb, AStarNode* cell, int chainId)
 }
 
 void GameTurnManager::givePoints(int base, int chainId, AStarNode* at, int color) {
-    int pts = (int)floorf(base * multiplierForChain(chainId) * levelModVal(level()));
+    int pts = (int)floorf(base * (flatMult ? 1 : multiplierForChain(chainId)) * boomMult * levelModVal(level()));
     if (onPoints) onPoints(pts, at, color);
 }
 
@@ -211,4 +211,46 @@ void GameTurnManager::updateTurnSensitive() {
             default: break;
         }
     }
+}
+
+void GameTurnManager::reset() {
+    m_timers.clear(); m_active.clear(); m_dying.clear(); m_boxes.clear(); m_chainId.clear();
+    m_chainCount = 0; m_pending = 0; timeFrozen = 0; skullDeath = false; flatMult = false; boomMult = 1;
+}
+
+void GameTurnManager::detonateBombs() {
+    std::vector<AStarNode*> bombs;
+    for (int x = 0; x < m_grid->width(); x++) for (int y = 0; y < m_grid->height(); y++) {
+        AStarNode* n = m_grid->nodeAt(x, y);
+        if (n->piece && (n->piece->pieceAttribute() == kAttrBomb || n->piece->pieceAttribute() == kAttrMegaBomb)) bombs.push_back(n);
+    }
+    m_pending++;
+    int i = 0;
+    for (AStarNode* n : bombs) {
+        int idx = i++;
+        after(0.09f * idx, [=] {
+            GamePiece* p = n->piece;
+            if (!p || m_dying.count(p)) return;
+            std::vector<AStarNode*> g = m_grid->sameTypeConnected(n);
+            if (g.size() >= 4 && !m_chainId.count(p)) startChain(g, n); else destroyPiece(n, 0, idx);
+        });
+    }
+    after(0.09f * i + 0.05f, [=] { m_pending--; if (m_pending == 0) handleSpecials(); });
+}
+
+void GameTurnManager::blastSkulls(int rank) {
+    std::vector<AStarNode*> targets;
+    for (int x = 0; x < m_grid->width(); x++) for (int y = 0; y < m_grid->height(); y++) {
+        AStarNode* n = m_grid->nodeAt(x, y);
+        if (!n->piece) continue;
+        PieceAttribute a = n->piece->pieceAttribute();
+        if (a == kAttrSkull || (a == kAttrIceBomb && rank >= 2) || (a == kAttrStone && rank >= 3)) targets.push_back(n);
+    }
+    m_pending++;
+    int i = 0;
+    for (AStarNode* n : targets) {
+        int idx = i++;
+        after(0.08f * idx, [=] { if (n->piece) { if (n->piece->pieceAttribute() == kAttrStone) n->piece->health = 0; destroyPiece(n, 0, idx); } });
+    }
+    after(0.08f * i + 0.3f, [=] { m_pending--; });
 }

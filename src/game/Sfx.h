@@ -5,4 +5,7 @@ namespace Sfx {
 void play(const char* file, float volume = 1);
 void music(const char* file, float volume = 0.45f);
 void stopMusic();
+void setVolumes(float music, float sfx);   // PauseLayer sliders (0..1), persisted in localStorage
+float musicVolume();
+float sfxVolume();
 }

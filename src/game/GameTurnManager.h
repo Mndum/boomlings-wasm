@@ -28,6 +28,11 @@ public:
     std::function<GamePiece*(AStarNode*)> spawnAt;   // create a random piece on an empty node (PlayLayer)
     std::function<void(AStarNode*)> removeSprite;    // hook for effects
     int bonusGold = 0, timeFrozen = 0;
+    // powerups (GameTurnManager::detonateAllBombs): BOOM detonates every bomb with flat scoring, Skull Blast clears skulls (+ ice bombs rank 2, stones rank 3)
+    bool flatMult = false; float boomMult = 1;
+    void detonateBombs();
+    void blastSkulls(int rank);
+    void reset();   // new game: drop pending timers and state
     bool skullDeath = false;
     void tick(float dt);
     bool busy() const { return m_pending > 0 || !m_timers.empty(); }

@@ -78,6 +78,9 @@ bool PlayLayer::init() {
     trailLayer = CCNode::create(); addChild(trailLayer, -2);
     fxLayer = CCNode::create(); addChild(fxLayer, 3);
     layoutHud();
+    frozenLbl = CCLabelBMFont::create("x0", "goldFont-hd.fnt");
+    frozenLbl->setScale(0.7f); frozenLbl->setPosition(ccp(296.5f, 456.5f)); frozenLbl->setVisible(false); addChild(frozenLbl, 9);
+    setupSlots();
 
     mgr.level = [this] { return level; };
     mgr.countOf = [this](int a) { return countOf(a); };
@@ -88,6 +91,7 @@ bool PlayLayer::init() {
     turn->onSound = [](const char* f, float v) { Sfx::play(f, v); };
     turn->spawnAt = [this](AStarNode* n) { return spawnAt(n, true); };
 
+    Sfx::musicVolume(); Sfx::sfxVolume();   // loads the saved slider values
     Sfx::music("BoomlingsLoop.mp3", 0.45f);
     scheduleUpdate();
     setTouchEnabled(true);
@@ -140,6 +144,8 @@ void PlayLayer::updateHud() {
     char b[32];
     sprintf(b, "%d", score); scoreLbl->setString(b);
     sprintf(b, "%d", level); levelLbl->setString(b);
+    if (turn) { frozenLbl->setVisible(turn->timeFrozen > 0); sprintf(b, "x%d", turn->timeFrozen); frozenLbl->setString(b); }
+    updateSlots();
     float frac = std::max(0.f, std::min(1.f, (float)levelPoints / target));
     float full = 304.f; // inner width of the points bar frame
     CCSize cs = barFill->getContentSize();
@@ -246,9 +252,13 @@ void PlayLayer::setSelected(AStarNode* n) {
 }
 
 void PlayLayer::ccTouchesBegan(CCSet* t, CCEvent*) {
-    if (phase != kIdle) return;
+    if (paused) return;
     CCTouch* tc = (CCTouch*)*t->begin();
     CCPoint p = convertToNodeSpace(tc->getLocation());
+    // pause button: top-left 55x55pt
+    if (p.x < 55 && p.y > 425 && phase != kDead) { pauseGame(); return; }
+    if (phase != kIdle) return;
+    for (Slot& sl : slots) if (sl.r.containsPoint(p)) { usePower(sl); return; }
     AStarNode* n = grid->nodeAtPoint(p.x, p.y, cell, ox, oy);
     if (!n) return;
     if (n->piece) { if (n->piece->frozen || n == selected) { setSelected(NULL); return; } setSelected(n); return; }
@@ -280,17 +290,8 @@ void PlayLayer::landed(CCNode*) {
 }
 
 void PlayLayer::endTurn() {
-    if (levelPoints >= target) {
-        showBig("LEVEL COMPLETE!", 1.6f);
-        Sfx::play("levelComplete002.ogg", 0.9f);
-        spawnParticles("levelComplete01", ccp(160, 107.4f), 6); spawnParticles("levelComplete02", ccp(160, 107.4f), 6);
-        for (int x = 0; x < N; x++) for (int y = 0; y < N; y++) {
-            AStarNode* n = grid->nodeAt(x, y);
-            if (n->piece) { n->piece->removeFromParent(); n->piece = NULL; Sfx::play(rand() % 2 ? "pop2b2.ogg" : "pops2a.ogg", 0.4f); }
-        }
-        phase = kLevelOver; levelTimer = 1.6f;
-        return;
-    }
+    turn->flatMult = false; turn->boomMult = 1;
+    if (levelPoints >= target) { completeLevel(); return; }
     if (turn->timeFrozen > 0) turn->timeFrozen--;
     else {
         turn->updateTurnSensitive();
@@ -299,9 +300,24 @@ void PlayLayer::endTurn() {
     if (turn->skullDeath) { Sfx::stopMusic(); Sfx::play("skullEnding002.ogg", 1); showBig("A SKULL BLEW UP", 99); phase = kDead; return; }
     if (!grid->validMoveExists()) { Sfx::stopMusic(); Sfx::play("res02.ogg", 0.8f); showBig("NO MOVES LEFT", 99); phase = kDead; return; }
     phase = kIdle;
+    updateHud();
+}
+
+void PlayLayer::completeLevel() {
+    showBig("LEVEL COMPLETE!", 1.6f);
+    Sfx::play("levelComplete002.ogg", 0.9f);
+    spawnParticles("levelComplete01", ccp(160, 107.4f), 6); spawnParticles("levelComplete02", ccp(160, 107.4f), 6);
+    for (int x = 0; x < N; x++) for (int y = 0; y < N; y++) {
+        AStarNode* n = grid->nodeAt(x, y);
+        if (n->piece) { n->piece->removeFromParent(); n->piece = NULL; Sfx::play(rand() % 2 ? "pop2b2.ogg" : "pops2a.ogg", 0.4f); }
+    }
+    phase = kLevelOver; levelTimer = 1.6f;
 }
 
 void PlayLayer::update(float dt) {
+    if (paused) return;
+    playTime += dt;
+    if (phase == kPow) { powTimer -= dt; if (powTimer <= 0) phase = kIdle; }
     turn->tick(dt);
     if (trail && trailPiece) trail->setPosition(trailPiece->getPosition() + ccp(0, 5));
     updateWarns();
@@ -455,4 +471,145 @@ void PlayLayer::addScore(int pts, AStarNode* at, int color) {
     Popup p; p.lbl = l; p.cell = at; p.pts = total; p.mod = mod; p.t = -0.26f; p.pos = posOf(at);
     l->setVisible(false);
     popups.push_back(p);
+}
+
+// ---- pause ----
+void PlayLayer::setTreePaused(CCNode* n, bool p) {
+    if (p) n->pauseSchedulerAndActions(); else n->resumeSchedulerAndActions();
+    CCObject* o;
+    CCARRAY_FOREACH(n->getChildren(), o) setTreePaused((CCNode*)o, p);
+}
+
+void PlayLayer::pauseGame() {
+    if (paused) return;
+    paused = true;
+    Sfx::play("pause01.ogg", 0.7f);
+    setSelected(NULL);
+    setTreePaused(boardLayer, true); setTreePaused(trailLayer, true); setTreePaused(fxLayer, true);
+    pauseLayer = PauseLayer::create((int)playTime, Sfx::musicVolume(), Sfx::sfxVolume());
+    pauseLayer->onMusic = [this](float v) { Sfx::setVolumes(v, pauseLayer->vol[1]); };
+    pauseLayer->onSfx = [this](float v) { Sfx::setVolumes(pauseLayer->vol[0], v); };
+    pauseLayer->onResume = [this] {
+        pauseLayer = NULL; paused = false;
+        setTreePaused(boardLayer, false); setTreePaused(trailLayer, false); setTreePaused(fxLayer, false);
+    };
+    pauseLayer->onMainMenu = [this] {   // the WASM build has no main menu yet: restart the run instead
+        PauseLayer* pl = pauseLayer; pauseLayer = NULL; pl->removeFromParent();
+        paused = false;
+        setTreePaused(boardLayer, false); setTreePaused(trailLayer, false); setTreePaused(fxLayer, false);
+        restart();
+    };
+    addChild(pauseLayer, 30);
+}
+
+void PlayLayer::restart() {
+    for (int x = 0; x < N; x++) for (int y = 0; y < N; y++) { AStarNode* n = grid->nodeAt(x, y); if (n->piece) { n->piece->removeFromParent(); n->piece = NULL; } }
+    for (auto& w : warns) { w.second.ps->stopSystem(); w.second.ps->release(); }
+    warns.clear();
+    trail = NULL; trailPiece = NULL;
+    trailLayer->removeAllChildren(); fxLayer->removeAllChildren(); hintLayer->removeAllChildren();
+    fxs.clear(); popups.clear(); setSelected(NULL);
+    turn->reset();
+    level = 0; score = 0; levelPoints = 0; playTime = 0;
+    bigLbl->setVisible(false);
+    setupSlots();
+    Sfx::music("BoomlingsLoop.mp3", 0.45f);
+    startLevel();
+}
+
+// ---- powerups (UILayer::setupPowerupSlots / PlayLayer::usePowerup) ----
+// The shop/save are not ported: the loadout comes from ?pow=boom,skull,time[:rank] (default boom,skull,time at rank 1).
+void PlayLayer::setupSlots() {
+    for (Slot& s : slots) { s.icon->removeFromParent(); s.badge->removeFromParent(); }
+    slots.clear();
+    char* q = emscripten_run_script_string("(location.search.match(/pow=([A-Za-z0-9:,]*)/)||[0,'boom,skull,time'])[1]");
+    std::string spec = q ? q : "";
+    static const struct { const char* name; const char* tag; const char* prefix; } defs[] = {
+        { "boom", "kPowBOOM", "boom" }, { "skull", "kPowSkullBlast", "skull" }, { "time", "kPowTimeFreeze", "timeFreeze" }, { "skip", "kPowLevelSkip", "skipLevel" } };
+    size_t pos = 0;
+    while (pos <= spec.size() && slots.size() < 3) {
+        size_t e = spec.find(',', pos); if (e == std::string::npos) e = spec.size();
+        std::string tok = spec.substr(pos, e - pos); pos = e + 1;
+        if (tok.empty()) continue;
+        int rank = 1; size_t c = tok.find(':');
+        if (c != std::string::npos) { rank = std::max(1, std::min(3, atoi(tok.c_str() + c + 1))); tok = tok.substr(0, c); }
+        for (auto& d : defs) if (tok == d.name) {
+            Slot s; s.tag = d.tag;
+            bool skip = s.tag == "kPowLevelSkip";
+            s.rank = skip ? 1 : rank;
+            s.charges = skip ? 1 : s.rank;            // charges per rank: 1, 2, 3 (Level Skip: 1)
+            char nm[48]; sprintf(nm, "%s_%02d.png", d.prefix, s.rank);
+            s.icon = CCSprite::createWithSpriteFrameName(nm);
+            s.badge = CCSprite::createWithSpriteFrameName("count_num_1.png");
+            s.icon->setUserObject(CCString::create(nm));
+            addChild(s.icon, 7); addChild(s.badge, 8);
+            slots.push_back(s);
+        }
+    }
+    int n = (int)slots.size();
+    if (!n) return;
+    float wpt = slots[0].icon->getContentSize().width, total = n * wpt + (n - 1) * 30;
+    float x = floorf((320 - total) * 0.5f) + floorf(wpt / 2);
+    for (Slot& s : slots) {
+        s.icon->setPosition(ccp(x, 44.5f));
+        s.badge->setScale(0.85f); s.badge->setPosition(ccp(x + wpt / 2 - 12, 44.5f + wpt / 2 - 11));
+        s.r = CCRectMake(x - wpt / 2, 44.5f - wpt / 2, wpt, wpt);
+        x += wpt + 30;
+    }
+    updateSlots();
+}
+
+void PlayLayer::updateSlots() {
+    CCSpriteFrameCache* fc = CCSpriteFrameCache::sharedSpriteFrameCache();
+    for (Slot& s : slots) {
+        std::string base = ((CCString*)s.icon->getUserObject())->getCString();
+        base = base.substr(0, base.size() - 4);
+        std::string nm = base + (s.charges > 0 ? "_on.png" : "_off.png");
+        CCSpriteFrame* f = fc->spriteFrameByName(nm.c_str());
+        if (!f) f = fc->spriteFrameByName((base + ".png").c_str());
+        if (f) s.icon->setDisplayFrame(f);
+        char b[32]; sprintf(b, "count_num_%d.png", std::min(12, std::max(0, s.charges)));
+        CCSpriteFrame* bf = fc->spriteFrameByName(b);
+        if (bf) s.badge->setDisplayFrame(bf);
+        s.badge->setVisible(bf != NULL);
+    }
+}
+
+bool PlayLayer::canUsePower(const Slot& s) const {
+    if (phase != kIdle || s.charges <= 0) return false;
+    bool bomb = false, skull = false, ice = false, stone = false;
+    for (int x = 0; x < N; x++) for (int y = 0; y < N; y++) {
+        AStarNode* n = grid->nodeAt(x, y);
+        if (!n->piece) continue;
+        PieceAttribute a = n->piece->pieceAttribute();
+        if (a == kAttrBomb || a == kAttrMegaBomb) bomb = true;
+        if (a == kAttrSkull) skull = true;
+        if (a == kAttrIceBomb) ice = true;
+        if (a == kAttrStone) stone = true;
+    }
+    if (s.tag == "kPowBOOM") return bomb;
+    if (s.tag == "kPowSkullBlast") return skull || (ice && s.rank >= 2) || (stone && s.rank >= 3);
+    if (s.tag == "kPowTimeFreeze") return turn->timeFrozen < 1;
+    return true;
+}
+
+void PlayLayer::usePower(Slot& s) {
+    if (!canUsePower(s)) return;
+    s.charges--;
+    setSelected(NULL);
+    Sfx::play("lightning5.ogg", 0.8f);
+    if (s.tag == "kPowBOOM") {
+        turn->boomMult = s.rank >= 3 ? 2.f : s.rank == 2 ? 1.5f : 1.f; turn->flatMult = true;
+        showBig("BOOM!", 0.9f);
+        turn->detonateBombs(); phase = kResolving;
+    } else if (s.tag == "kPowSkullBlast") {
+        turn->blastSkulls(s.rank); phase = kResolving;
+    } else if (s.tag == "kPowTimeFreeze") {
+        turn->timeFrozen = s.rank == 2 ? 4 : s.rank >= 3 ? 5 : 3;
+        showBig("TIME FREEZE", 1.0f);
+        phase = kPow; powTimer = 0.5f;
+    } else {   // level skip
+        completeLevel();
+    }
+    updateHud();
 }
