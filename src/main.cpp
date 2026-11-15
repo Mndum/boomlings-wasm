@@ -30,7 +30,14 @@ public:
     void applicationWillEnterForeground() { CCDirector::sharedDirector()->resume(); }
 };
 
+// stop simulating while the tab is hidden and resume without a huge delta (no jump when coming back)
+extern "C" EMSCRIPTEN_KEEPALIVE void set_hidden(int hidden) {
+    CCDirector* d = CCDirector::sharedDirector();
+    if (hidden) d->pause(); else d->resume();
+}
+
 int main(int, char**) {
     // the canvas backing size decides the GL viewport: 2:3 like the game's 320x480 design
-    EM_ASM({ var c = Module["canvas"]; c.width = 640; c.height = 960; });
+    EM_ASM({ var c = Module["canvas"]; c.width = 640; c.height = 960;
+        if (location.search.indexOf('manual') < 0) document.addEventListener('visibilitychange', function() { Module._set_hidden(document.hidden ? 1 : 0); }); });
     static AppDelegate app; CCEGLView::sharedOpenGLView(); return CCApplication::sharedApplication()->run(); }

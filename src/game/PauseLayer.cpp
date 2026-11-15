@@ -104,7 +104,7 @@ void PauseLayer::layoutSlider(int i) {
     float fillPx = std::max(0.f, txPx - gx - 8), done = 0;
     while (done < fillPx - 0.01f) {
         float wPx = std::min(tp.width, fillPx - done);
-        CCSprite* t = pieceSprite("sliderBar-hd.png", CCRectMake(0, 3, wPx, tp.height - 6));
+        CCSprite* t = pieceSprite("sliderBar-hd.png", CCRectMake(0, 3.3f, wPx, tp.height - 6.6f));
         t->setAnchorPoint(ccp(0, 0.5f)); t->setPosition(P(gx + 8 + done, gy));
         fill[i]->addChild(t);
         done += wPx;

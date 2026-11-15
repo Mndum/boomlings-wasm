@@ -59,6 +59,7 @@ private:
     struct Warn { cocos2d::CCParticleSystemQuad* ps; int tick; };
     std::map<GamePiece*, Warn> warns;
     void updateWarns();
+    void warmUp();
     void addScore(int pts, AStarNode* at, int color);
     void updateEffects(float dt);
     // pause + powerup slots

@@ -67,10 +67,13 @@ bool PlayLayer::init() {
 
     addChild(CCLayerColor::create(ccc4(0x72, 0x4a, 0x23, 255)), -10);
     grid = new AStarGrid(N, N);
+    // the 64 board tiles share one texture: a single batched draw call instead of 64
+    CCSpriteBatchNode* tileBatch = CCSpriteBatchNode::createWithTexture(fc->spriteFrameByName("TileLight01_001.png")->getTexture(), 64);
+    addChild(tileBatch, -5);
     for (int x = 0; x < N; x++) for (int y = 0; y < N; y++) {
         CCSprite* t = CCSprite::createWithSpriteFrameName((x + y) % 2 ? "TileLight01_001.png" : "TileDark01_001.png");
         t->setPosition(posOf(grid->nodeAt(x, y)));
-        addChild(t, -5);
+        tileBatch->addChild(t);
     }
     hintLayer = CCNode::create(); addChild(hintLayer, -4);
     CCNode* shadows = CCNode::create(); addChild(shadows, -3); GamePiece::shadowLayer = shadows;
@@ -81,6 +84,7 @@ bool PlayLayer::init() {
     frozenLbl = CCLabelBMFont::create("x0", "goldFont-hd.fnt");
     frozenLbl->setScale(0.7f); frozenLbl->setPosition(ccp(296.5f, 456.5f)); frozenLbl->setVisible(false); addChild(frozenLbl, 9);
     setupSlots();
+    warmUp();
 
     mgr.level = [this] { return level; };
     mgr.countOf = [this](int a) { return countOf(a); };
@@ -415,13 +419,32 @@ void PlayLayer::updateEffects(float dt) {
     }
 }
 
+// create every emitter once off screen so the first real use (trail, burst...) does not parse a plist or bake a texture mid-game
+void PlayLayer::warmUp() {
+    static const char* names[] = { "starEffect", "chargeEffect", "stoneHit", "trailEffect", "Skull_w_01", "Skull_w_02", "Skull_w_03", "Ice_w_01", "Ice_w_02", "levelComplete01", "levelComplete02" };
+    for (const char* n : names) { CCParticleSystemQuad* p = spawnParticles(n, ccp(-1000, -1000), 0); if (p) { p->stopSystem(); p->removeFromParent(); } }
+    static const char* sfx[] = { "pops2a.ogg", "pop2b2.ogg", "bombbbb.ogg", "megaExplode001.ogg", "frostBoom2.ogg", "skullTest.ogg", "skullEnding002.ogg", "mysteryAppear.ogg", "mysteryTrigger001.ogg",
+        "spinner.ogg", "mysteryReward001.ogg", "mysteryReward002.ogg", "mysteryReward003.ogg", "pipeenter02.ogg", "splat03.ogg", "megaSplat001.ogg", "splatSound.ogg", "stoneHit1_m.ogg", "stoneHit2.ogg",
+        "levelComplete002.ogg", "lvlup003.ogg", "chainTest01.ogg", "whoa.ogg", "alert04.ogg", "click01.ogg", "click05.ogg", "megaEnter.ogg", "res02.ogg", "lightning5.ogg", "pause01.ogg" };
+    Sfx::preload(sfx, (int)(sizeof(sfx) / sizeof(sfx[0])));
+}
+
 // CCParticleSystemQuad from the game's plists; their texture (e.g. starParticle.png) is a frame of particleImgSheet
 CCParticleSystemQuad* PlayLayer::spawnParticles(const char* name, CCPoint pos, int z, const float* tint, CCNode* parent) {
-    std::string path = CCFileUtils::sharedFileUtils()->fullPathForFilename((std::string(name) + ".plist").c_str());
-    CCDictionary* d = CCDictionary::createWithContentsOfFile(path.c_str());
-    if (!d) return NULL;
-    std::string frame = d->valueForKey("textureFileName")->getCString();
-    d->setObject(CCString::create("particleImgSheet.png"), "textureFileName");
+    // plists are parsed (and their texture baked) once; later spawns only copy the cached dictionary into a new emitter
+    static std::map<std::string, std::pair<CCDictionary*, std::string> > dicts;
+    auto it = dicts.find(name);
+    if (it == dicts.end()) {
+        std::string path = CCFileUtils::sharedFileUtils()->fullPathForFilename((std::string(name) + ".plist").c_str());
+        CCDictionary* d0 = CCDictionary::createWithContentsOfFile(path.c_str());
+        if (!d0) return NULL;
+        d0->retain();
+        std::string fr = d0->valueForKey("textureFileName")->getCString();
+        d0->setObject(CCString::create("particleImgSheet.png"), "textureFileName");
+        it = dicts.insert(std::make_pair(std::string(name), std::make_pair(d0, fr))).first;
+    }
+    CCDictionary* d = it->second.first;
+    std::string frame = it->second.second;
     CCParticleSystemQuad* p = new CCParticleSystemQuad();
     if (!p->initWithDictionary(d)) { delete p; return NULL; }
     p->autorelease();

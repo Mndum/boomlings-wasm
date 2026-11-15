@@ -1,10 +1,34 @@
 #include "Sfx.h"
 #include <emscripten.h>
 
+// Web Audio for effects: decoded once (preload), then a BufferSource per play - no element creation or decoding on the hot path.
+// Falls back to an HTMLAudio clone if a buffer is not decoded yet.
+EM_JS(void, js_preload, (const char* file), {
+    var n = UTF8ToString(file);
+    var S = Module.__sfx || (Module.__sfx = { urls: {}, music: null, musicName: null, mv: 1, sv: 1 });
+    try {
+        if (!S.ctx) {
+            S.ctx = new (window.AudioContext || window.webkitAudioContext)(); S.buf = {};
+            var wake = function() { if (S.ctx.state !== 'running') S.ctx.resume(); };
+            document.addEventListener('pointerdown', wake); document.addEventListener('keydown', wake);
+        }
+        if (S.buf[n]) return;
+        var data = FS.readFile('/' + n);
+        var ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+        S.ctx.decodeAudioData(ab).then(function(b) { S.buf[n] = b; }, function() {});
+    } catch (e) {}
+});
+
 EM_JS(void, js_sfx, (const char* file, float vol), {
     var n = UTF8ToString(file);
     var S = Module.__sfx || (Module.__sfx = { urls: {}, music: null, musicName: null, mv: 1, sv: 1 });
     try {
+        if (S.ctx && S.buf && S.buf[n] && S.ctx.state === 'running') {
+            var src = S.ctx.createBufferSource(), g = S.ctx.createGain();
+            src.buffer = S.buf[n]; g.gain.value = Math.min(1, vol * S.sv);
+            src.connect(g); g.connect(S.ctx.destination); src.start(0);
+            return;
+        }
         if (!S.urls[n]) {
             var data = FS.readFile('/' + n);
             S.urls[n] = URL.createObjectURL(new Blob([data], { type: n.endsWith('.mp3') ? 'audio/mpeg' : 'audio/ogg' }));
@@ -58,6 +82,7 @@ void setVolumes(float m, float s) { js_volumes(m, s); }
 float musicVolume() { return js_get_vol(0); }
 float sfxVolume() { return js_get_vol(1); }
 void play(const char* file, float volume) { js_sfx(file, volume); }
+void preload(const char* const* files, int n) { for (int i = 0; i < n; i++) js_preload(files[i]); }
 void music(const char* file, float volume) { js_music(file, volume); }
 void stopMusic() { js_stop_music(); }
 }
