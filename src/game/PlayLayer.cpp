@@ -325,6 +325,10 @@ void PlayLayer::update(float dt) {
     turn->tick(dt);
     if (trail && trailPiece) trail->setPosition(trailPiece->getPosition() + ccp(0, 5));
     updateWarns();
+    // danger music while a Skull is within 3 turns of blowing up
+    bool dng = false;
+    for (auto& w : warns) if (w.first->pieceAttribute() == kAttrSkull) { dng = true; break; }
+    if (phase != kDead && dng != danger) { danger = dng; Sfx::music(danger ? "BoomlingsDangerLoop.ogg" : "BoomlingsLoop.mp3", 0.45f); }
     updateEffects(dt);
     if (phase == kResolving && !turn->busy()) endTurn();
     else if (phase == kLevelOver) { levelTimer -= dt; if (levelTimer <= 0) startLevel(); }
@@ -533,7 +537,7 @@ void PlayLayer::restart() {
     trailLayer->removeAllChildren(); fxLayer->removeAllChildren(); hintLayer->removeAllChildren();
     fxs.clear(); popups.clear(); setSelected(NULL);
     turn->reset();
-    level = 0; score = 0; levelPoints = 0; playTime = 0;
+    level = 0; score = 0; levelPoints = 0; playTime = 0; danger = false;
     bigLbl->setVisible(false);
     setupSlots();
     Sfx::music("BoomlingsLoop.mp3", 0.45f);

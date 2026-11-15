@@ -63,7 +63,7 @@ private:
     void addScore(int pts, AStarNode* at, int color);
     void updateEffects(float dt);
     // pause + powerup slots
-    bool paused = false;
+    bool paused = false, danger = false;
     float playTime = 0, powTimer = 0;
     PauseLayer* pauseLayer = NULL;
     cocos2d::CCLabelBMFont* frozenLbl = NULL;
